@@ -1,0 +1,169 @@
+.gallery {
+  display: grid;
+  gap: var(--gap-md);
+}
+
+/*
+ * At one or two entries the gallery is a stack of full-width hero cards. A
+ * three-column grid holding a single card reads as a page that failed to load
+ * the rest (R31, AE6) — so the layout only becomes a grid once there is
+ * enough to fill one.
+ */
+.gallery[data-layout="hero"] {
+  grid-template-columns: 1fr;
+}
+
+.gallery[data-layout="grid"] {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.card {
+  display: block;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+}
+
+.gallery[data-layout="hero"] .card {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+}
+
+.preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: linear-gradient(
+    150deg,
+    oklch(0.7 0.12 var(--preview-hue)),
+    oklch(0.48 0.14 calc(var(--preview-hue) + 55))
+  );
+  color: rgb(255 255 255 / 0.85);
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.gallery[data-layout="hero"] .preview {
+  aspect-ratio: auto;
+  min-height: 168px;
+}
+
+.previewImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  padding: var(--gap-md) var(--gap-lg);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.arrow {
+  color: var(--ink-faint);
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.card:hover .arrow {
+  transform: translate(2px, -2px);
+}
+
+.description {
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}
+
+.stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  margin-top: auto;
+  padding-top: var(--gap-sm);
+}
+
+.tag {
+  padding: 2px 9px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.66rem;
+  color: var(--ink-faint);
+}
+
+.host {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+}
+
+/* --- Compact card --------------------------------------------------------- */
+
+.compactList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.compactItem {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  min-width: 0;
+}
+
+.compactSwatch {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    150deg,
+    oklch(0.7 0.12 var(--preview-hue)),
+    oklch(0.48 0.14 calc(var(--preview-hue) + 55))
+  );
+}
+
+.compactMeta {
+  min-width: 0;
+}
+
+.compactTitle {
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.compactDescription {
+  overflow: hidden;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 899px) {
+  .gallery[data-layout="hero"] .card {
+    grid-template-columns: 1fr;
+  }
+
+  .gallery[data-layout="hero"] .preview {
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+  }
+}

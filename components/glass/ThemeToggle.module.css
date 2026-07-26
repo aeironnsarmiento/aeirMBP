@@ -1,0 +1,63 @@
+.button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.button:hover {
+  background: var(--glass-surface-strong);
+  color: var(--ink);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * Which icon shows is decided entirely in CSS from the resolved theme, so the
+ * server and the client always render identical markup and the correct icon is
+ * already painted before hydration.
+ */
+.icon {
+  grid-area: 1 / 1;
+}
+
+.moon {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sun {
+    display: none;
+  }
+
+  .moon {
+    display: block;
+  }
+}
+
+:global(:root[data-theme="light"]) .sun {
+  display: block;
+}
+
+:global(:root[data-theme="light"]) .moon {
+  display: none;
+}
+
+:global(:root[data-theme="dark"]) .sun {
+  display: none;
+}
+
+:global(:root[data-theme="dark"]) .moon {
+  display: block;
+}

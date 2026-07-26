@@ -1,0 +1,371 @@
+/* Desktop breakpoint is 900px throughout the shell. */
+
+.shell {
+  position: relative;
+  display: grid;
+  grid-template-areas:
+    "sidebar topbar"
+    "sidebar grid";
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--gap-md);
+  height: 100dvh;
+  padding: var(--shell-pad);
+}
+
+/* --- Background ----------------------------------------------------------- */
+
+.background {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+/* --- Top bar -------------------------------------------------------------- */
+
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+  min-height: var(--topbar-h);
+  padding: 0 var(--gap-md);
+}
+
+.brand {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+}
+
+.spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.clock {
+  flex: none;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.iconButton:hover {
+  background: var(--glass-surface-strong);
+  color: var(--ink);
+}
+
+.iconButton[data-active="true"] {
+  color: var(--accent);
+}
+
+.signIn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.signInInput {
+  width: 168px;
+  padding: 5px 10px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-pill);
+  background: var(--glass-surface-weak);
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.signInInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* --- Sidebar -------------------------------------------------------------- */
+
+.sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+  /* min-height:0 lets the sidebar shrink inside the grid row rather than
+     overflowing its own glass panel on a short viewport. */
+  min-height: 0;
+  padding: var(--gap-md);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.profile {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  min-width: 0;
+}
+
+.avatar {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(150deg, oklch(0.72 0.11 220), oklch(0.5 0.14 275));
+  color: rgb(255 255 255 / 0.9);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.avatarImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profileMeta {
+  min-width: 0;
+}
+
+.profileName {
+  overflow: hidden;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profileHandle {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.navItem:hover {
+  background: var(--glass-surface-weak);
+  color: var(--ink);
+}
+
+.navItem[aria-current="true"] {
+  background: var(--glass-surface-strong);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.navLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hotkey {
+  flex: none;
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.64rem;
+  color: var(--ink-faint);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* Sits at the bottom of the sidebar, but only once there is room for it — on a
+   short viewport it is the first thing allowed to disappear. */
+.sidebarFoot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: auto;
+  padding-top: var(--gap-md);
+  font-size: 0.68rem;
+  line-height: 1.7;
+  color: var(--ink-faint);
+}
+
+.sidebarFoot kbd {
+  margin-right: 3px;
+}
+
+/* --- Widget grid ---------------------------------------------------------- */
+
+.grid {
+  grid-area: grid;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: var(--gap-md);
+  align-content: start;
+  /* The dashboard scrolls, the page body does not — that is what keeps the
+     background layer fixed and the body free of horizontal scroll (R7). */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding: var(--gap-md);
+  text-align: left;
+  min-height: 178px;
+}
+
+.card[data-span="two"] {
+  grid-column: span 2;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.cardIcon {
+  color: var(--ink-muted);
+}
+
+.cardTitle {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.cardBody {
+  flex: 1;
+  min-height: 0;
+}
+
+.cardTagline {
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+@media (max-width: 1180px) {
+  .card[data-span="two"] {
+    grid-column: auto;
+  }
+}
+
+/* --- Reflow below the desktop breakpoint (R7) ----------------------------- */
+
+@media (max-width: 899px) {
+  .shell {
+    grid-template-areas:
+      "topbar"
+      "grid"
+      "sidebar";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    padding: var(--gap-sm);
+    padding-bottom: calc(var(--gap-sm) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .sidebar {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--gap-xs);
+    padding: var(--gap-xs);
+  }
+
+  .profile,
+  .sidebarFoot {
+    display: none;
+  }
+
+  .nav {
+    flex: 1;
+    flex-direction: row;
+    gap: 2px;
+  }
+
+  .navItem {
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+    justify-content: center;
+    padding: 7px 4px;
+    font-size: 0.66rem;
+    text-align: center;
+  }
+
+  .navLabel {
+    flex: none;
+  }
+
+  .hotkey {
+    display: none;
+  }
+
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card[data-span="two"] {
+    grid-column: auto;
+  }
+
+  /* The handle and the clock are the first things to go: the now-playing pulse
+     is the only piece of chrome worth the width on a phone. */
+  .brand,
+  .clock {
+    display: none;
+  }
+
+  .signInInput {
+    width: 120px;
+  }
+}

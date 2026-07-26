@@ -1,0 +1,215 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xl);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-md);
+}
+
+.sectionTitle {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.sectionNote {
+  font-size: 0.76rem;
+  color: var(--ink-faint);
+}
+
+/* --- Background picker ---------------------------------------------------- */
+
+.backgrounds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--gap-sm);
+}
+
+.background {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background-position: center;
+  background-size: cover;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.background:hover {
+  transform: translateY(-2px);
+}
+
+.background[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+
+.backgroundLabel {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 14px 8px 5px;
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.55));
+  color: #fff;
+  font-size: 0.7rem;
+  text-align: left;
+}
+
+/* --- Opacity -------------------------------------------------------------- */
+
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+}
+
+.slider {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.sliderValue {
+  min-width: 3ch;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+
+/* --- Avatar --------------------------------------------------------------- */
+
+.avatarRow {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+}
+
+.avatarPreview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(150deg, oklch(0.72 0.11 220), oklch(0.5 0.14 275));
+  color: rgb(255 255 255 / 0.9);
+  font-weight: 600;
+}
+
+.avatarImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* --- Buttons and status --------------------------------------------------- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-pill);
+  background: var(--glass-surface-weak);
+  color: var(--ink);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.button:hover:not(:disabled) {
+  background: var(--glass-surface-strong);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.buttonRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.status {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
+.status[data-tone="error"] {
+  color: var(--live);
+}
+
+/* --- Job progress --------------------------------------------------------- */
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--gap-sm) var(--gap-md);
+  border-radius: var(--radius-md);
+}
+
+.progressLine {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+
+.progressTrack {
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--glass-surface-weak);
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  transition: width var(--dur) var(--ease-out);
+}
+
+.compactList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
+.compactRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+}
+
+.compactValue {
+  font-family: var(--font-mono, monospace);
+  color: var(--ink);
+}

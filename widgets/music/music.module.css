@@ -1,0 +1,293 @@
+/* --- Shared row primitives ------------------------------------------------ */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+  padding: var(--gap-sm) var(--gap-sm);
+  border-radius: var(--radius-sm);
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.row:hover {
+  background: var(--glass-surface-weak);
+}
+
+/* Proportional play-count bar behind the row. Reads as density at a glance
+   without adding a chart. */
+.row::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--share, 0) * 100%);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
+.rank {
+  flex: none;
+  width: 1.9rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+  text-align: right;
+}
+
+.meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.primary {
+  overflow: hidden;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.secondary {
+  overflow: hidden;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trailing {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-md);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+
+.duration {
+  color: var(--ink-faint);
+}
+
+/* --- Summary strip -------------------------------------------------------- */
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: var(--gap-sm);
+  margin-bottom: var(--gap-lg);
+}
+
+.stat {
+  padding: var(--gap-sm) var(--gap-md);
+  border-radius: var(--radius-md);
+}
+
+.statValue {
+  font-size: 1.35rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.statLabel {
+  margin-top: 2px;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.statNote {
+  margin-top: 2px;
+  font-size: 0.68rem;
+  color: var(--ink-faint);
+}
+
+/* --- Controls ------------------------------------------------------------- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  margin-bottom: var(--gap-sm);
+}
+
+.controlLabel {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.ranges {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-pill);
+}
+
+.range {
+  padding: 3px 11px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.range:hover {
+  color: var(--ink);
+}
+
+.range[aria-pressed="true"] {
+  background: var(--glass-surface-strong);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* --- States --------------------------------------------------------------- */
+
+.empty,
+.error {
+  padding: var(--gap-xl) var(--gap-md);
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+.emptyHint {
+  margin-top: var(--gap-xs);
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skeletonRow {
+  height: 60px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--glass-surface-weak),
+    var(--glass-surface-strong),
+    var(--glass-surface-weak)
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s var(--ease-in-out) infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonRow {
+    animation: none;
+  }
+}
+
+/* --- Compact card --------------------------------------------------------- */
+
+.compactRate {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-xs);
+}
+
+.compactNumber {
+  font-size: 1.6rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+
+.compactUnit {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
+.compactNote {
+  margin-top: 2px;
+  margin-bottom: var(--gap-md);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+.compactList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.compactRow {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  min-width: 0;
+}
+
+.compactMeta {
+  min-width: 0;
+  flex: 1;
+}
+
+.compactTrack {
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactArtist {
+  overflow: hidden;
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactWhen {
+  flex: none;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.66rem;
+  color: var(--ink-faint);
+}
+
+.compactEmpty {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+@media (max-width: 899px) {
+  .summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .trailing {
+    gap: var(--gap-sm);
+  }
+}

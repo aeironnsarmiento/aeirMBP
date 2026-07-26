@@ -1,0 +1,39 @@
+.artwork {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    145deg,
+    oklch(0.72 0.11 var(--art-hue)),
+    oklch(0.52 0.13 calc(var(--art-hue) + 40))
+  );
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+  color: rgb(255 255 255 / 0.9);
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+.image[data-loaded="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image {
+    transition: none;
+  }
+}
