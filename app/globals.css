@@ -88,6 +88,77 @@ button:focus-visible,
   font-variant-numeric: tabular-nums;
 }
 
+/* --- Widget expansion motion (R5, R9) ------------------------------------- */
+
+/*
+ * Document-level pseudo-elements, so they live in the global sheet rather than
+ * a module. The grid changes track counts and cell assignments at once, which
+ * is why the motion comes from a view transition rather than an interpolated
+ * grid template.
+ */
+::view-transition-group(*) {
+  animation-duration: var(--dur-slow);
+  animation-timing-function: var(--ease-out);
+}
+
+/*
+ * Cross-fading a card against itself just makes both copies translucent
+ * mid-flight. Holding the new state visible reads as one box changing size.
+ */
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: var(--dur);
+  mix-blend-mode: normal;
+}
+
+/*
+ * Reduced motion is CSS policy, not a JavaScript branch, so there is one place
+ * that decides whether the site animates. The transition still runs and the
+ * layout still changes — it simply arrives immediately.
+ */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/*
+ * A transition snapshot paints in the top layer, above everything on the page
+ * including the sticky nav bar. Without its own named group the nav stays part
+ * of the page snapshot, which paints beneath every widget group, and a
+ * collapsing widget sweeps across it for the length of the animation.
+ *
+ * Declared here rather than in the shell's CSS module: modules scope
+ * `view-transition-name` the same way they scope class names, so a name
+ * written there is hashed and no `::view-transition-group()` rule can match it.
+ */
+[data-shell="sidebar"] {
+  view-transition-name: shell-sidebar;
+}
+
+::view-transition-group(shell-sidebar) {
+  z-index: 20;
+}
+
+/* --- Touch scrolling ------------------------------------------------------ */
+
+/*
+ * No scrollbars on a phone. Touch surfaces scroll by gesture and the bar is
+ * chrome over content the whole way down. Scrolling itself is untouched — this
+ * hides the indicator, it does not disable the overflow.
+ */
+@media (max-width: 899px) {
+  * {
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Visually hidden but reachable by assistive technology. */
 .sr-only {
   position: absolute;

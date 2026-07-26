@@ -33,6 +33,18 @@ export const CACHE_TTL_MS = 20_000;
 /** last.fm must not be able to hold the shell's render open. */
 export const LASTFM_TIMEOUT_MS = 2_500;
 
+/**
+ * How many recent plays this read pulls back.
+ *
+ * More than the pulse needs, because the same response is what keeps the
+ * stored history current. A Hobby-plan cron is capped at once per day, so a
+ * schedule can never make "recently played" recent — but this read already
+ * runs every time someone is looking at the site, which is exactly when the
+ * history needs to be up to date. Enough to cover a long listening session
+ * between two visits without paging.
+ */
+export const CATCH_UP_LIMIT = 50;
+
 type CacheEntry = { value: NowPlaying | null; expiresAt: number };
 let cache: CacheEntry | null = null;
 
@@ -44,13 +56,21 @@ export function clearNowPlayingCache(): void {
 export type NowDeps = {
   fetchRecent?: () => Promise<LastfmPlay[]>;
   readLatestStored?: () => Promise<NowPlaying | null>;
+  /**
+   * Handed the plays this read fetched, on a cache miss only.
+   *
+   * The caller decides what to do with them — the API route persists them so
+   * the stored history keeps up; the server render does not, because a write
+   * has no business holding a page open.
+   */
+  onFreshPlays?: (plays: readonly LastfmPlay[]) => Promise<void> | void;
   now?: () => number;
   ttlMs?: number;
 };
 
 async function defaultFetchRecent(): Promise<LastfmPlay[]> {
   const page = await getRecentTracks(
-    { limit: 1 },
+    { limit: CATCH_UP_LIMIT },
     { attempts: 1, signal: AbortSignal.timeout(LASTFM_TIMEOUT_MS) },
   );
   return page.plays;
@@ -86,6 +106,7 @@ async function defaultReadLatestStored(): Promise<NowPlaying | null> {
 export async function readNowPlaying({
   fetchRecent = defaultFetchRecent,
   readLatestStored = defaultReadLatestStored,
+  onFreshPlays,
   now = Date.now,
   ttlMs = CACHE_TTL_MS,
 }: NowDeps = {}): Promise<NowPlaying | null> {
@@ -93,9 +114,11 @@ export async function readNowPlaying({
   if (cache && cache.expiresAt > at) return cache.value;
 
   let value: NowPlaying | null = null;
+  let fresh: readonly LastfmPlay[] = [];
 
   try {
     const plays = await fetchRecent();
+    fresh = plays;
     const first = plays[0];
     if (first) {
       value = {
@@ -122,5 +145,15 @@ export async function readNowPlaying({
   }
 
   cache = { value, expiresAt: at + ttlMs };
+
+  if (onFreshPlays && fresh.length > 0) {
+    try {
+      await onFreshPlays(fresh);
+    } catch {
+      // The pulse is the contract here. A store that could not be brought up
+      // to date is stale, not broken, and must not blank the chrome.
+    }
+  }
+
   return value;
 }

@@ -1,4 +1,5 @@
 import { requireOwner } from "@/lib/auth/guard";
+import { runArtistSweep } from "@/widgets/music/enrichment/artists";
 import { runEnrichmentSweep } from "@/widgets/music/enrichment/sweep";
 import { createDrizzleStore } from "@/widgets/music/server/store";
 
@@ -13,21 +14,40 @@ export async function GET() {
   if (denied) return denied;
 
   const store = createDrizzleStore();
+  const [tracks, artists] = await Promise.all([
+    store.countPendingEnrichment(),
+    store.countPendingArtists(),
+  ]);
+
   return Response.json(
-    { remaining: await store.countPendingEnrichment() },
+    { remaining: tracks + artists, tracks, artists },
     { headers: { "cache-control": "no-store" } },
   );
 }
 
-/** Advances the sweep by one bounded batch. */
+/**
+ * Advances both sweeps by one bounded batch.
+ *
+ * Tracks first: durations feed the listening-time total the panel leads with,
+ * and an artist portrait is cosmetic beside it.
+ */
 export async function POST() {
   const denied = await requireOwner();
   if (denied) return denied;
 
   try {
-    return Response.json(await runEnrichmentSweep(), {
-      headers: { "cache-control": "no-store" },
-    });
+    const tracks = await runEnrichmentSweep();
+    const artists = await runArtistSweep();
+
+    return Response.json(
+      {
+        tracks,
+        artists,
+        remaining: tracks.remaining + artists.remaining,
+        done: tracks.done && artists.done,
+      },
+      { headers: { "cache-control": "no-store" } },
+    );
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "sweep-failed" },

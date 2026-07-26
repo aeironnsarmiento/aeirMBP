@@ -110,5 +110,9 @@ export function findWidget(
 
 /** The sub-view a widget opens on, or null when it declares none. */
 export function defaultSubView(manifest: WidgetManifest): string | null {
+  const declared = manifest.defaultSubView;
+  if (declared && manifest.subViews?.some((view) => view.id === declared)) {
+    return declared;
+  }
   return manifest.subViews?.[0]?.id ?? null;
 }

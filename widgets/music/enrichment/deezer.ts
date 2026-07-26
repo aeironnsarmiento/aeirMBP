@@ -58,6 +58,79 @@ async function search(
   return body.data?.[0] ?? null;
 }
 
+type DeezerArtist = {
+  name?: string;
+  nb_fan?: number;
+  picture_xl?: string;
+  picture_big?: string;
+  picture_medium?: string;
+};
+
+const ARTIST_SEARCH_URL = "https://api.deezer.com/search/artist";
+
+/** Deezer's ranking is fuzzy, so enough results to find an exact name in. */
+const ARTIST_CANDIDATES = 10;
+
+function bestPicture(artist: DeezerArtist | undefined): string | null {
+  return (
+    artist?.picture_xl || artist?.picture_big || artist?.picture_medium || null
+  );
+}
+
+/**
+ * Picks the artist actually being searched for.
+ *
+ * Deezer ranks by its own relevance, which is not name equality: searching
+ * "Ado" returns a 24-fan act called "Ado & Montorsi" ahead of the Ado with
+ * 129,000 followers. Preferring an exact name and then the largest following
+ * is what stops a near-namesake's portrait being attached to the artist.
+ */
+export function chooseArtist(
+  candidates: readonly DeezerArtist[],
+  wanted: string,
+): DeezerArtist | undefined {
+  const target = wanted.trim().toLowerCase();
+  const exact = candidates.filter(
+    (candidate) => candidate.name?.trim().toLowerCase() === target,
+  );
+
+  const pool = exact.length > 0 ? exact : candidates;
+  return [...pool].sort((a, b) => (b.nb_fan ?? 0) - (a.nb_fan ?? 0))[0];
+}
+
+/**
+ * A portrait for one artist.
+ *
+ * Deezer's artist index is a different endpoint from the track search, and its
+ * pictures are of the artist rather than a record they appear on — which is
+ * the whole reason this exists instead of reusing a track's cover art.
+ *
+ * Returns null on a genuine miss and throws on a transport failure, so the
+ * sweep can tell "no such artist" from "try again later".
+ */
+export async function lookupArtistPicture(
+  artistName: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const artist = sanitize(artistName);
+  if (!artist) return null;
+
+  const url = new URL(ARTIST_SEARCH_URL);
+  url.searchParams.set("q", artist);
+  url.searchParams.set("limit", String(ARTIST_CANDIDATES));
+
+  const response = await fetch(url, { signal, cache: "no-store" });
+  if (!response.ok) throw new Error(`Deezer responded ${response.status}`);
+
+  const body = (await response.json()) as {
+    data?: DeezerArtist[];
+    error?: unknown;
+  };
+  if (body.error) throw new Error("Deezer returned an error payload");
+
+  return bestPicture(chooseArtist(body.data ?? [], artist));
+}
+
 export function createDeezerProvider(
   options: { signal?: AbortSignal } = {},
 ): EnrichmentProvider {

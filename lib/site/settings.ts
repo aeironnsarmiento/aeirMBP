@@ -65,16 +65,18 @@ function rowsToSettings(
     if (!field) continue;
 
     switch (field) {
-      case "glassOpacity": {
+      case "frameOpacity":
+      case "paneOpacity": {
         const value = Number(row.value);
-        if (Number.isFinite(value)) settings.glassOpacity = value;
+        if (Number.isFinite(value)) settings[field] = value;
         break;
       }
       case "links":
         settings.links = asLinks(row.value);
         break;
       case "avatarPath":
-        settings.avatarPath = typeof row.value === "string" ? row.value : null;
+      case "backgroundPath":
+        settings[field] = typeof row.value === "string" ? row.value : null;
         break;
       case "backgroundId":
         if (isBackgroundId(row.value)) settings.backgroundId = row.value;

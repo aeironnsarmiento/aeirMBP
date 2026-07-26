@@ -6,6 +6,14 @@ import type { SiteSettings } from "@/lib/site/schema";
 export type SiteContextValue = {
   settings: SiteSettings;
   avatarUrl: string | null;
+  /**
+   * The owner's uploaded background, resolved to a URL.
+   *
+   * Resolved on the server rather than derived here, because turning a stored
+   * object path into a URL needs the storage module and this context is read
+   * by client components (R11).
+   */
+  backgroundUrl: string | null;
   /** Whether this request carries a valid owner session (R16). */
   isOwner: boolean;
 };

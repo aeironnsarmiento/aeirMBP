@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { assembleRegistry } from "@/lib/registry/assemble";
 import type { WidgetManifest } from "@/lib/registry/types";
 import { useOpenWidget } from "./useOpenWidget";
@@ -223,5 +223,69 @@ describe("one store value (R13)", () => {
       subView: null,
       params: { edit: "1" },
     });
+  });
+});
+
+describe("motion (R5, R9)", () => {
+  it("commits the state change when the platform has no view transition", () => {
+    // jsdom implements none, so this is the path the suite runs by default —
+    // and the one most likely to regress silently.
+    expect(
+      (document as Document & { startViewTransition?: unknown })
+        .startViewTransition,
+    ).toBeUndefined();
+
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+
+    act(() => result.current.open("music"));
+    expect(result.current.state.widgetId).toBe("music");
+
+    act(() => result.current.close());
+    expect(result.current.state.widgetId).toBeNull();
+  });
+
+  it("routes the change through a view transition when one exists", () => {
+    const startViewTransition = vi.fn((callback: () => void) => {
+      callback();
+      return { finished: Promise.resolve() };
+    });
+    vi.stubGlobal("document", Object.assign(document, { startViewTransition }));
+
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+    startViewTransition.mockClear();
+
+    act(() => result.current.open("music"));
+
+    expect(startViewTransition).toHaveBeenCalledTimes(1);
+    expect(result.current.state.widgetId).toBe("music");
+
+    Reflect.deleteProperty(document, "startViewTransition");
+    vi.unstubAllGlobals();
+  });
+
+  it("still lands in the requested state when the transition throws", () => {
+    const startViewTransition = vi.fn((callback: () => void) => {
+      callback();
+      throw new Error("transition skipped");
+    });
+    Object.assign(document, { startViewTransition });
+
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+
+    expect(() => act(() => result.current.open("projects"))).toThrow();
+    expect(result.current.state.widgetId).toBe("projects");
+
+    Reflect.deleteProperty(document, "startViewTransition");
+  });
+
+  it("settles on the last widget when two are opened in succession", () => {
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+
+    act(() => {
+      result.current.open("music");
+      result.current.open("projects");
+    });
+
+    expect(result.current.state.widgetId).toBe("projects");
   });
 });

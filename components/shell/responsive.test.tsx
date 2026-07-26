@@ -1,7 +1,7 @@
+import { readFileSync } from "node:fs";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { auditBlurLayers } from "@/components/glass/blurBudget";
-import { GlassModal } from "@/components/glass/GlassModal";
 import { BLUR_DEPTH_CEILING, GlassSurface } from "@/components/glass/GlassSurface";
 import { assembleRegistry } from "@/lib/registry/assemble";
 import type { WidgetManifest } from "@/lib/registry/types";
@@ -9,8 +9,8 @@ import { DEFAULT_SITE_SETTINGS } from "@/lib/site/schema";
 import { SiteProvider } from "./SiteContext";
 import { Sidebar } from "./Sidebar";
 import { WidgetGrid } from "./WidgetGrid";
+import { closedStore, storeOpenOn } from "./testStore";
 import shellStyles from "./shell.module.css";
-import modalStyles from "@/components/glass/GlassModal.module.css";
 
 const Icon = () => null;
 
@@ -29,7 +29,7 @@ function manifest(overrides: Partial<WidgetManifest> = {}): WidgetManifest {
     order: 1,
     icon: Icon,
     compact: Compact,
-    expanded: () => null,
+    expanded: () => <div>expanded body</div>,
     ...overrides,
   };
 }
@@ -46,6 +46,7 @@ function withSite(children: React.ReactNode) {
       value={{
         settings: DEFAULT_SITE_SETTINGS,
         avatarUrl: null,
+        backgroundUrl: null,
         isOwner: false,
       }}
     >
@@ -54,49 +55,76 @@ function withSite(children: React.ReactNode) {
   );
 }
 
-describe("blur budget (R6)", () => {
-  it("keeps the dashboard within the ceiling", () => {
+/**
+ * Mirrors the nesting in `Shell.tsx`: one frame wrapping the sidebar and the
+ * grid. Rendering the real `Shell` here would mount every widget's compact
+ * view and its data fetching, so the composition is reproduced instead — the
+ * assertions are about the depth mechanism, which is the same either way.
+ */
+function withFrame(children: React.ReactNode) {
+  return withSite(
+    <GlassSurface as="div" className={shellStyles.shell}>
+      {children}
+    </GlassSurface>,
+  );
+}
+
+describe("blur budget (R1, R2, R3)", () => {
+  it("blurs the frame and nothing else on the dashboard", () => {
     const { container } = render(
-      withSite(<WidgetGrid registry={REGISTRY} onOpen={() => {}} />),
+      withFrame(
+        <>
+          <Sidebar registry={REGISTRY} openWidgetId={null} onOpen={() => {}} />
+          <WidgetGrid registry={REGISTRY} store={closedStore()} />
+        </>,
+      ),
     );
 
     const audit = auditBlurLayers(container);
 
     expect(audit.withinBudget).toBe(true);
     expect(audit.violations).toEqual([]);
-    // Three cards blur; the surface nested inside each does not.
-    expect(audit.blurred).toBe(3);
-    expect(audit.suppressed).toBe(3);
+    // The frame is the only backdrop filter on the page. The sidebar, the
+    // three cards, and the surface nested inside each card all lean on tint.
+    expect(audit.blurred).toBe(1);
+    expect(audit.suppressed).toBe(7);
     expect(audit.maxDepth).toBeGreaterThan(BLUR_DEPTH_CEILING);
   });
 
-  it("keeps an expanded widget within the ceiling", () => {
+  it("puts the sidebar and every card a level below the frame", () => {
     render(
-      <GlassModal open onClose={() => {}} title="Music">
-        <GlassSurface tone="well">stat</GlassSurface>
-        <GlassSurface tone="well">
-          <GlassSurface tone="well">deeply nested</GlassSurface>
-        </GlassSurface>
-      </GlassModal>,
+      withFrame(
+        <>
+          <Sidebar registry={REGISTRY} openWidgetId={null} onOpen={() => {}} />
+          <WidgetGrid registry={REGISTRY} store={closedStore()} />
+        </>,
+      ),
     );
 
-    const audit = auditBlurLayers(document.body);
+    // data-blur="off" is what drops the drop shadow as well as the filter, so
+    // asserting the attribute is asserting R2 — jsdom resolves no cascade.
+    for (const label of ["Open About", "Open Music", "Open Projects"]) {
+      const card = screen.getByLabelText(label);
+      expect(card).toHaveAttribute("data-blur", "off");
+      expect(card).toHaveAttribute("data-glass-depth", "2");
+    }
 
-    expect(audit.withinBudget).toBe(true);
-    // Only the modal panel blurs — everything inside it leans on tint.
-    expect(audit.blurred).toBe(1);
+    const sidebar = screen.getByLabelText("Widgets");
+    expect(sidebar).toHaveAttribute("data-blur", "off");
+    expect(sidebar).toHaveAttribute("data-glass-depth", "2");
   });
 
-  it("does not stack a second full-viewport blur behind the modal panel", () => {
-    render(
-      <GlassModal open onClose={() => {}} title="Music">
-        body
-      </GlassModal>,
+  it("still blurs only the frame while a widget is expanded", () => {
+    const { container } = render(
+      withFrame(
+        <WidgetGrid registry={REGISTRY} store={storeOpenOn("music")} />,
+      ),
     );
 
-    const scrim = document.querySelector(`.${modalStyles.scrim}`);
-    expect(scrim).not.toBeNull();
-    expect(scrim).not.toHaveAttribute("data-blur", "on");
+    const audit = auditBlurLayers(container);
+
+    expect(audit.withinBudget).toBe(true);
+    expect(audit.blurred).toBe(1);
   });
 
   it("reports a violation if a surface past the ceiling ever blurs", () => {
@@ -113,16 +141,46 @@ describe("blur budget (R6)", () => {
   });
 });
 
-describe("reflow below the desktop breakpoint (R7)", () => {
+describe("reflow below the desktop breakpoint (R6, R7)", () => {
   it("declares a single-column grid and a horizontal nav bar under 900px", () => {
-    // jsdom does not evaluate media queries, so the rules themselves are the
-    // assertion: the stylesheet must carry a max-width:899px block that
-    // collapses the grid and turns the sidebar into a nav bar.
     const css = shellStyles as unknown as Record<string, string>;
 
+    expect(css.viewport).toBeTruthy();
     expect(css.shell).toBeTruthy();
     expect(css.sidebar).toBeTruthy();
     expect(css.grid).toBeTruthy();
+  });
+
+  it("presents an expanded widget as a full-screen sheet below the breakpoint", () => {
+    // jsdom evaluates no media queries and resolves no cascade, so the
+    // stylesheet source is the only thing that can carry this assertion.
+    const source = readFileSync("components/shell/shell.module.css", "utf8");
+    const breakpointBlock = source.slice(source.indexOf("@media (max-width: 899px)"));
+
+    expect(breakpointBlock).toContain('.grid[data-expanded] .card[data-state="expanded"]');
+    expect(breakpointBlock).toContain("height: 100%");
+    // No compressed sibling column at 375px.
+    expect(breakpointBlock).toContain('.grid[data-expanded] .card[data-state="compact"]');
+    expect(breakpointBlock).toContain("display: none");
+    // The sheet must not cover the chrome — the way back has to stay visible.
+    expect(breakpointBlock).not.toContain("position: fixed");
+  });
+
+  it("sizes dashboard rows to a card's full content, not its min-content", () => {
+    // jsdom performs no layout, so the declaration is the only assertion
+    // available. Without it an auto row resolves a card's flex body from its
+    // min-content and a busy summary spills over the card below it.
+    const source = readFileSync("components/shell/shell.module.css", "utf8");
+    const dashboardRules = source.slice(0, source.indexOf(".grid[data-expanded]"));
+
+    expect(dashboardRules).toContain("grid-auto-rows: max-content");
+  });
+
+  it("renders one tree at every width — no component reads the breakpoint", () => {
+    const source = readFileSync("components/shell/WidgetGrid.tsx", "utf8");
+
+    expect(source).not.toContain("matchMedia");
+    expect(source).not.toContain("innerWidth");
   });
 
   it("renders one nav entry per registry widget, with its hotkey", () => {
@@ -143,7 +201,7 @@ describe("reflow below the desktop breakpoint (R7)", () => {
   });
 
   it("marks the wide card so the grid can drop its span on a narrow viewport", () => {
-    render(withSite(<WidgetGrid registry={REGISTRY} onOpen={() => {}} />));
+    render(withSite(<WidgetGrid registry={REGISTRY} store={closedStore()} />));
 
     expect(screen.getByLabelText("Open Music")).toHaveAttribute(
       "data-span",
@@ -154,35 +212,17 @@ describe("reflow below the desktop breakpoint (R7)", () => {
       "one",
     );
   });
-
-  it("presents the expanded widget through the sheet-capable panel", () => {
-    render(
-      <GlassModal open onClose={() => {}} title="Music">
-        body
-      </GlassModal>,
-    );
-
-    const dialog = screen.getByRole("dialog");
-    expect(dialog.className).toContain(modalStyles.panel);
-  });
 });
 
-describe("the shell survives expansion (R1)", () => {
-  it("does not unmount the dashboard when a widget expands", () => {
+describe("the shell survives expansion (R1, R4)", () => {
+  it("does not remount a sibling card when a widget expands", () => {
     const { rerender } = render(
-      withSite(<WidgetGrid registry={REGISTRY} onOpen={() => {}} />),
+      withSite(<WidgetGrid registry={REGISTRY} store={closedStore()} />),
     );
     const cardBefore = screen.getByLabelText("Open About");
 
     rerender(
-      withSite(
-        <>
-          <WidgetGrid registry={REGISTRY} onOpen={() => {}} />
-          <GlassModal open onClose={() => {}} title="About">
-            body
-          </GlassModal>
-        </>,
-      ),
+      withSite(<WidgetGrid registry={REGISTRY} store={storeOpenOn("music")} />),
     );
 
     expect(screen.getByLabelText("Open About")).toBe(cardBefore);

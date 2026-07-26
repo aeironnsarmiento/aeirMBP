@@ -6,7 +6,7 @@ import {
   readSiteSettings,
   type SiteSettings,
 } from "@/lib/site/settings";
-import { publicAvatarUrl } from "@/lib/site/storage";
+import { publicAssetUrl } from "@/lib/site/storage";
 import { readNowPlaying } from "@/widgets/music/server/now";
 import type { NowPlaying } from "@/widgets/music/server/now";
 
@@ -36,7 +36,8 @@ export default async function Page() {
       <Shell
         site={{
           settings,
-          avatarUrl: publicAvatarUrl(settings.avatarPath),
+          avatarUrl: publicAssetUrl(settings.avatarPath),
+          backgroundUrl: publicAssetUrl(settings.backgroundPath),
           isOwner,
         }}
         nowPlaying={nowPlaying}

@@ -25,9 +25,21 @@ type Tracked = MusicState & { key: string };
  * Every response comes from local storage, so this hook has no last.fm
  * fallback path — there is nothing to fall back from (AE8).
  */
-export function useMusic({ view, range, limit }: MusicRequest): MusicState {
+export function useMusic({
+  view,
+  range,
+  limit,
+}: MusicRequest): MusicState & { summary: MusicSummary | null } {
   const key = `${view}|${range ?? ""}|${limit ?? ""}`;
   const [tracked, setTracked] = useState<Tracked>({ key, status: "loading" });
+
+  /*
+   * The totals describe the whole library rather than the open view, so they
+   * outlive a view switch. Held here instead of alongside `tracked`, which
+   * resets to loading on every key change — reading them from the request in
+   * flight made them blink out and back on each tab.
+   */
+  const [summary, setSummary] = useState<MusicSummary | null>(null);
 
   // Reset during render rather than in an effect: switching sub-view must not
   // paint one frame of the previous view's rows before the effect runs.
@@ -43,7 +55,9 @@ export function useMusic({ view, range, limit }: MusicRequest): MusicState {
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
-        setTracked({ key, status: "ready", data: body as MusicResponse });
+        const data = body as MusicResponse;
+        setTracked({ key, status: "ready", data });
+        setSummary(data.summary);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
@@ -57,5 +71,5 @@ export function useMusic({ view, range, limit }: MusicRequest): MusicState {
     return () => controller.abort();
   }, [key, view, range, limit]);
 
-  return tracked;
+  return { ...tracked, summary };
 }

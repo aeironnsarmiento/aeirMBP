@@ -172,3 +172,58 @@ describe("ordering and lookup", () => {
     expect(defaultSubView(manifest())).toBeNull();
   });
 });
+
+describe("declared default sub-view", () => {
+  it("opens on the declared view rather than the first listed", () => {
+    const manifest = {
+      id: "music",
+      title: "Music",
+      hotkey: "m",
+      order: 1,
+      icon: () => null,
+      compact: () => null,
+      expanded: () => null,
+      subViews: [
+        { id: "tracks", label: "Top tracks" },
+        { id: "recent", label: "Recently played" },
+      ],
+      defaultSubView: "recent",
+    } satisfies WidgetManifest;
+
+    expect(defaultSubView(manifest)).toBe("recent");
+  });
+
+  it("falls back to the first when none is declared", () => {
+    const manifest = {
+      id: "music",
+      title: "Music",
+      hotkey: "m",
+      order: 1,
+      icon: () => null,
+      compact: () => null,
+      expanded: () => null,
+      subViews: [
+        { id: "tracks", label: "Top tracks" },
+        { id: "recent", label: "Recently played" },
+      ],
+    } satisfies WidgetManifest;
+
+    expect(defaultSubView(manifest)).toBe("tracks");
+  });
+
+  it("ignores a declared view the widget does not have", () => {
+    const manifest = {
+      id: "music",
+      title: "Music",
+      hotkey: "m",
+      order: 1,
+      icon: () => null,
+      compact: () => null,
+      expanded: () => null,
+      subViews: [{ id: "tracks", label: "Top tracks" }],
+      defaultSubView: "gone",
+    } satisfies WidgetManifest;
+
+    expect(defaultSubView(manifest)).toBe("tracks");
+  });
+});

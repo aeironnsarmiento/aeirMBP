@@ -1,4 +1,5 @@
 import type {
+  ArtistPicture,
   JobName,
   JobPatch,
   JobState,
@@ -30,6 +31,16 @@ export type MemoryStore = MusicStore & {
       attemptedAt: Date | null;
     }
   >;
+  artists: Map<
+    string,
+    {
+      artistName: string;
+      pictureUrl: string | null;
+      source: string | null;
+      enrichedAt: Date | null;
+      attemptedAt: Date | null;
+    }
+  >;
   jobs: Map<JobName, JobState>;
 };
 
@@ -41,11 +52,13 @@ export function createMemoryStore(): MemoryStore {
   const scrobbles: ScrobbleRow[] = [];
   const seen = new Set<string>();
   const tracks: MemoryStore["tracks"] = new Map();
+  const artists: MemoryStore["artists"] = new Map();
   const jobs = new Map<JobName, JobState>();
 
   return {
     scrobbles,
     tracks,
+    artists,
     jobs,
 
     async insertScrobbles(rows) {
@@ -127,6 +140,62 @@ export function createMemoryStore(): MemoryStore {
       const track = tracks.get(trackKey);
       if (!track || track.enrichedAt) return;
       track.attemptedAt = new Date();
+    },
+
+    /*
+     * Artists are derived from the scrobbles rather than seeded, matching the
+     * real store: every distinct artist with no picture and no prior attempt,
+     * most-played first.
+     */
+    async pendingArtists(limit: number) {
+      const plays = new Map<string, { name: string; count: number }>();
+      for (const scrobble of scrobbles) {
+        const seen = plays.get(scrobble.artistKey);
+        if (seen) seen.count += 1;
+        else plays.set(scrobble.artistKey, { name: scrobble.artistName, count: 1 });
+      }
+
+      return [...plays.entries()]
+        .filter(([artistKey]) => {
+          const known = artists.get(artistKey);
+          return !known || (!known.pictureUrl && !known.attemptedAt);
+        })
+        .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
+        .slice(0, limit)
+        .map(([artistKey, { name }]) => ({ artistKey, artistName: name }));
+    },
+
+    async countPendingArtists() {
+      const keys = new Set(scrobbles.map((scrobble) => scrobble.artistKey));
+      let total = 0;
+      for (const artistKey of keys) {
+        const known = artists.get(artistKey);
+        if (!known || (!known.pictureUrl && !known.attemptedAt)) total += 1;
+      }
+      return total;
+    },
+
+    async recordArtistPicture(artistKey: string, picture: ArtistPicture) {
+      const now = new Date();
+      artists.set(artistKey, {
+        artistName: picture.artistName,
+        pictureUrl: picture.pictureUrl,
+        source: picture.source,
+        enrichedAt: now,
+        attemptedAt: now,
+      });
+    },
+
+    async recordArtistMiss(artistKey: string) {
+      const known = artists.get(artistKey);
+      if (known?.enrichedAt) return;
+      artists.set(artistKey, {
+        artistName: known?.artistName ?? artistKey,
+        pictureUrl: known?.pictureUrl ?? null,
+        source: known?.source ?? null,
+        enrichedAt: null,
+        attemptedAt: new Date(),
+      });
     },
 
     async readJob(job: JobName) {

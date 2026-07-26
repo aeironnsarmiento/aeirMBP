@@ -16,10 +16,12 @@ import "./tokens.css";
  * 1 means only the outermost surface in a nesting chain blurs. Stacking
  * backdrop filters is the single most expensive thing this design can do on a
  * phone GPU — each one re-samples and re-blurs everything already composited
- * beneath it — so R6 is enforced structurally rather than by review discipline.
+ * beneath it — so the bound is enforced structurally rather than by review
+ * discipline.
  *
- * Sibling surfaces are unaffected: a dashboard of six glass cards is six
- * independent single-layer blurs, not a six-deep stack.
+ * Since the whole desktop sits inside one frame, that frame is the only
+ * surface on the page that blurs; the sidebar and every card render a level
+ * below it and lean on tint instead (R1, R3).
  */
 export const BLUR_DEPTH_CEILING = 1;
 
@@ -28,21 +30,6 @@ const GlassDepthContext = createContext(0);
 /** Current nesting depth. 0 means no glass surface is above this point. */
 export function useGlassDepth(): number {
   return useContext(GlassDepthContext);
-}
-
-/**
- * Restarts the depth count for a subtree.
- *
- * Needed by the modal host: React context flows through portals, so an
- * expanded widget rendered into document.body would otherwise inherit the
- * shell's depth and refuse to blur.
- */
-export function GlassDepthReset({ children }: { children: ReactNode }) {
-  return (
-    <GlassDepthContext.Provider value={0}>
-      {children}
-    </GlassDepthContext.Provider>
-  );
 }
 
 export type GlassTone = "panel" | "raised" | "well";

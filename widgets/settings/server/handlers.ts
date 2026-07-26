@@ -5,7 +5,15 @@ import {
   writeSiteSettings,
   type SiteSettings,
 } from "@/lib/site/settings";
-import { UploadRejected, uploadAvatar } from "@/lib/site/storage";
+import {
+  UploadRejected,
+  checkStorage,
+  isAssetPath,
+  repairStorage,
+  signAssetUpload,
+  uploadAvatar,
+} from "@/lib/site/storage";
+import { CUSTOM_BACKGROUND_ID } from "@/lib/theme/backgrounds";
 import { readBackfillProgress } from "@/widgets/music/server/backfill";
 
 /**
@@ -20,7 +28,111 @@ import { readBackfillProgress } from "@/widgets/music/server/backfill";
  * so the route fails closed on its own (R34, AE2).
  */
 
-const EDITABLE_FIELDS = ["backgroundId", "glassOpacity"] as const;
+const EDITABLE_FIELDS = [
+  "backgroundId",
+  "frameOpacity",
+  "paneOpacity",
+] as const;
+
+/**
+ * Grants permission to upload a background, without the bytes passing through
+ * this server (R13).
+ *
+ * The hosting platform caps a function's request body at 4.5MB, which no
+ * usable GIF wallpaper fits under. The client declares what it is about to
+ * send, this checks it against the background rules, and the file then travels
+ * straight to storage.
+ */
+export async function handleUploadSign(request: Request): Promise<Response> {
+  const denied = await requireOwner();
+  if (denied) return denied;
+
+  try {
+    const body = (await request.json()) as { type?: unknown; size?: unknown };
+
+    if (typeof body.type !== "string" || typeof body.size !== "number") {
+      return Response.json(
+        { error: "Describe the file you want to upload: its type and size." },
+        { status: 400 },
+      );
+    }
+
+    const target = await signAssetUpload("background", {
+      type: body.type,
+      size: body.size,
+    });
+
+    return Response.json(target, {
+      headers: { "cache-control": "no-store" },
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+/**
+ * Records a background the browser has finished uploading, and selects it.
+ *
+ * The path is checked against the shape this app mints rather than trusted, so
+ * the confirm step cannot be used to point the site at an arbitrary object.
+ */
+export async function handleUploadConfirm(request: Request): Promise<Response> {
+  const denied = await requireOwner();
+  if (denied) return denied;
+
+  try {
+    const body = (await request.json()) as { path?: unknown };
+
+    if (typeof body.path !== "string" || !isAssetPath("background", body.path)) {
+      return Response.json(
+        { error: "That is not an upload this site issued." },
+        { status: 400 },
+      );
+    }
+
+    const settings = await writeSiteSettings({
+      backgroundPath: body.path,
+      backgroundId: CUSTOM_BACKGROUND_ID,
+    });
+
+    return Response.json(settings, { headers: { "cache-control": "no-store" } });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+/** Reports whether storage is usable, and what to fix when it is not (R18). */
+export async function handleStorageCheck(): Promise<Response> {
+  const denied = await requireOwner();
+  if (denied) return denied;
+
+  try {
+    return Response.json(await checkStorage(), {
+      headers: { "cache-control": "no-store" },
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+/**
+ * Provisions the bucket the check just reported as wrong (R18).
+ *
+ * Same response shape as the check, because that is what the panel already
+ * renders: the owner presses one button and reads one line either way.
+ */
+export async function handleStorageRepair(): Promise<Response> {
+  const denied = await requireOwner();
+  if (denied) return denied;
+
+  try {
+    return Response.json(await repairStorage(), {
+      headers: { "cache-control": "no-store" },
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
 
 function pickEditable(body: Record<string, unknown>): Partial<SiteSettings> {
   const patch: Partial<SiteSettings> = {};
@@ -60,7 +172,24 @@ export async function handleSettingsUpdate(request: Request): Promise<Response> 
     }
 
     const body = (await request.json()) as Record<string, unknown>;
-    const settings = await writeSiteSettings(pickEditable(body));
+    const patch = pickEditable(body);
+
+    // Selecting the custom background with nothing uploaded would strand the
+    // site on a missing image, so it is refused rather than resolved silently.
+    if (patch.backgroundId === CUSTOM_BACKGROUND_ID) {
+      const { backgroundPath } = await readSiteSettings();
+      if (!backgroundPath) {
+        return Response.json(
+          {
+            error: "Upload a background image before selecting it.",
+            field: "backgroundId",
+          },
+          { status: 422 },
+        );
+      }
+    }
+
+    const settings = await writeSiteSettings(patch);
 
     return Response.json(settings, { headers: { "cache-control": "no-store" } });
   } catch (error) {

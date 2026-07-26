@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   defaultSubView,
   defaultWidgetId,
@@ -37,6 +38,36 @@ export type OpenWidgetApi = {
   setParam: (key: string, value: string) => void;
 };
 
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (callback: () => void) => unknown;
+};
+
+/**
+ * Commits a layout-changing state update as one continuous motion (R5).
+ *
+ * The grid changes both its track counts and which cell each card occupies, so
+ * interpolating `grid-template-columns` would snap rather than animate. A view
+ * transition animates from a before/after snapshot instead, which handles an
+ * arbitrary reflow with no measurement code.
+ *
+ * `flushSync` is required: the transition callback has to leave the DOM in its
+ * final state synchronously, and React's own updates are not.
+ *
+ * Where the API is absent the state simply changes, which is the same
+ * behaviour `prefers-reduced-motion` already asks for (R9) — so the degraded
+ * path is a supported path rather than a fallback nobody exercises.
+ */
+export function commitWithTransition(update: () => void): void {
+  const start = (document as ViewTransitionDocument).startViewTransition;
+
+  if (typeof start !== "function") {
+    update();
+    return;
+  }
+
+  start.call(document, () => flushSync(update));
+}
+
 /** Keys typed into a field are text, not shortcuts. */
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -64,19 +95,23 @@ export function useOpenWidget(registry: Registry): OpenWidgetApi {
       const manifest = findWidget(registry, id);
       if (!manifest) return;
 
-      // Replacing the value rather than layering onto it is what stops modals
-      // from stacking when a hotkey is pressed while another widget is open.
-      setState({
-        widgetId: manifest.id,
-        subView: options.subView ?? defaultSubView(manifest),
-        params: options.params ?? {},
-      });
+      // Replacing the value rather than layering onto it is what stops two
+      // widgets from being expanded when a hotkey is pressed while one is open.
+      commitWithTransition(() =>
+        setState({
+          widgetId: manifest.id,
+          subView: options.subView ?? defaultSubView(manifest),
+          params: options.params ?? {},
+        }),
+      );
     },
     [registry],
   );
 
   const close = useCallback(() => {
-    setState({ widgetId: null, subView: null, params: {} });
+    commitWithTransition(() =>
+      setState({ widgetId: null, subView: null, params: {} }),
+    );
   }, []);
 
   const setSubView = useCallback((subView: string) => {
@@ -96,10 +131,12 @@ export function useOpenWidget(registry: Registry): OpenWidgetApi {
       if (isTypingTarget(event.target)) return;
 
       if (event.key === "Escape") {
-        setState((current) =>
-          current.widgetId === null
-            ? current
-            : { widgetId: null, subView: null, params: {} },
+        commitWithTransition(() =>
+          setState((current) =>
+            current.widgetId === null
+              ? current
+              : { widgetId: null, subView: null, params: {} },
+          ),
         );
         return;
       }

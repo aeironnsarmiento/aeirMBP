@@ -18,7 +18,11 @@
   color-scheme: light dark;
 
   /* --- Owner-authored identity (server-supplied, set inline on :root) ------ */
-  --glass-alpha: 0.55;
+  /* Two dials, not one (R14). The split follows the blur-depth boundary that
+     GlassSurface already writes, so the frame and the panes inside it are
+     independently tunable without any component reading either value. */
+  --glass-alpha-frame: 0.55;
+  --glass-alpha-pane: 0.55;
   --bg-image: none;
   --bg-position: center;
 
@@ -27,12 +31,16 @@
   --glass-blur: 20px;
   --glass-saturate: 175%;
 
-  --glass-surface: rgb(var(--glass-tint) / var(--glass-alpha));
+  /* The frame. */
+  --glass-surface: rgb(var(--glass-tint) / var(--glass-alpha-frame));
+  /* Everything inside it. Strong and weak are pane-relative, because every
+     surface that asks for them sits inside the frame. */
+  --glass-surface-pane: rgb(var(--glass-tint) / var(--glass-alpha-pane));
   --glass-surface-strong: rgb(
-    var(--glass-tint) / clamp(0, calc(var(--glass-alpha) + 0.18), 1)
+    var(--glass-tint) / clamp(0, calc(var(--glass-alpha-pane) + 0.18), 1)
   );
   --glass-surface-weak: rgb(
-    var(--glass-tint) / clamp(0, calc(var(--glass-alpha) - 0.22), 1)
+    var(--glass-tint) / clamp(0, calc(var(--glass-alpha-pane) - 0.22), 1)
   );
 
   --glass-border: rgb(255 255 255 / 0.5);
@@ -46,11 +54,6 @@
   --glass-shadow-lift: 0 20px 60px rgb(15 23 42 / 0.24),
     0 4px 14px rgb(15 23 42 / 0.12);
 
-  /* Scrim behind an expanded widget. Deliberately unblurred: the modal panel
-     above it already carries a full-viewport backdrop filter, and stacking a
-     second one is the exact cost R6 exists to prevent. */
-  --scrim: rgb(15 23 42 / 0.28);
-
   /* --- Ink ---------------------------------------------------------------- */
   --ink: oklch(0.24 0.02 260);
   --ink-muted: oklch(0.46 0.02 260);
@@ -60,8 +63,8 @@
   /* --- Accents ------------------------------------------------------------ */
   --accent: oklch(0.6 0.14 225);
   --accent-soft: oklch(0.6 0.14 225 / 0.16);
-  --live: oklch(0.63 0.21 25);
-  --live-soft: oklch(0.63 0.21 25 / 0.18);
+  --live: oklch(0.6 0.17 148);
+  --live-soft: oklch(0.6 0.17 148 / 0.18);
 
   /* --- Geometry ----------------------------------------------------------- */
   --radius-xs: 8px;
@@ -101,8 +104,6 @@
     --glass-shadow-lift: 0 26px 70px rgb(0 0 0 / 0.62),
       0 6px 18px rgb(0 0 0 / 0.4);
 
-    --scrim: rgb(3 6 14 / 0.46);
-
     --ink: oklch(0.96 0.005 260);
     --ink-muted: oklch(0.78 0.015 260);
     --ink-faint: oklch(0.62 0.02 260);
@@ -110,8 +111,8 @@
 
     --accent: oklch(0.78 0.13 205);
     --accent-soft: oklch(0.78 0.13 205 / 0.18);
-    --live: oklch(0.72 0.19 25);
-    --live-soft: oklch(0.72 0.19 25 / 0.22);
+    --live: oklch(0.75 0.19 150);
+    --live-soft: oklch(0.75 0.19 150 / 0.22);
   }
 }
 
@@ -129,8 +130,6 @@
   --glass-shadow-lift: 0 20px 60px rgb(15 23 42 / 0.24),
     0 4px 14px rgb(15 23 42 / 0.12);
 
-  --scrim: rgb(15 23 42 / 0.28);
-
   --ink: oklch(0.24 0.02 260);
   --ink-muted: oklch(0.46 0.02 260);
   --ink-faint: oklch(0.62 0.02 260);
@@ -138,8 +137,8 @@
 
   --accent: oklch(0.6 0.14 225);
   --accent-soft: oklch(0.6 0.14 225 / 0.16);
-  --live: oklch(0.63 0.21 25);
-  --live-soft: oklch(0.63 0.21 25 / 0.18);
+  --live: oklch(0.6 0.17 148);
+  --live-soft: oklch(0.6 0.17 148 / 0.18);
 }
 
 :root[data-theme="dark"] {
@@ -153,8 +152,6 @@
   --glass-shadow-lift: 0 26px 70px rgb(0 0 0 / 0.62),
     0 6px 18px rgb(0 0 0 / 0.4);
 
-  --scrim: rgb(3 6 14 / 0.46);
-
   --ink: oklch(0.96 0.005 260);
   --ink-muted: oklch(0.78 0.015 260);
   --ink-faint: oklch(0.62 0.02 260);
@@ -162,8 +159,8 @@
 
   --accent: oklch(0.78 0.13 205);
   --accent-soft: oklch(0.78 0.13 205 / 0.18);
-  --live: oklch(0.72 0.19 25);
-  --live-soft: oklch(0.72 0.19 25 / 0.22);
+  --live: oklch(0.75 0.19 150);
+  --live-soft: oklch(0.75 0.19 150 / 0.22);
 }
 
 /* --- Glass material, applied by GlassSurface ------------------------------ */
@@ -180,15 +177,16 @@
 /*
  * The only place backdrop-filter is declared. `data-blur` is written by
  * GlassSurface and is "off" for any surface nested past the depth ceiling, so
- * the R6 bound is enforced in one place and is inspectable in the DOM.
+ * the bound is enforced in one place and is inspectable in the DOM (R3).
  */
 .glass[data-blur="on"] {
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
-/* A nested surface cannot blur, so it leans on tint contrast instead. */
+/* A nested surface cannot blur, so it leans on tint contrast instead — at the
+   owner's pane opacity rather than the frame's (R14). */
 .glass[data-blur="off"] {
-  background: var(--glass-surface-strong);
+  background: var(--glass-surface-pane);
   box-shadow: var(--glass-edge);
 }
 
@@ -219,6 +217,17 @@
 
 .glass[data-interactive="true"]:active {
   transform: translateY(0);
+}
+
+/*
+ * Inside the frame there is no shadow to lift off (R2), so hover reads as a
+ * tint change instead of elevation. Without this the rule above would hand a
+ * drop shadow back to every card the frame just took it from, and a 2px lift
+ * with nothing under it reads as a jitter.
+ */
+.glass[data-blur="off"][data-interactive="true"]:hover {
+  transform: none;
+  box-shadow: var(--glass-edge);
 }
 
 .glass[data-interactive="true"]:focus-visible {

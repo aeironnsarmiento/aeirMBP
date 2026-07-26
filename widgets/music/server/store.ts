@@ -1,6 +1,11 @@
-import { and, count, desc, eq, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { musicJobState, musicScrobble, musicTrack } from "@/lib/db/schema";
+import {
+  musicArtist,
+  musicJobState,
+  musicScrobble,
+  musicTrack,
+} from "@/lib/db/schema";
 
 /**
  * The music widget's only door to the database (R15).
@@ -45,6 +50,17 @@ export type PendingTrack = {
   albumName: string | null;
 };
 
+export type ArtistPicture = {
+  artistName: string;
+  pictureUrl: string;
+  source: string;
+};
+
+export type PendingArtist = {
+  artistKey: string;
+  artistName: string;
+};
+
 export type JobName = "backfill" | "poll" | "enrichment";
 
 export type JobState = {
@@ -76,8 +92,26 @@ export interface MusicStore {
   recordEnrichment(trackKey: string, result: TrackEnrichment): Promise<void>;
   /** Marks a track both sources missed, so the sweep stops retrying it. */
   recordEnrichmentMiss(trackKey: string): Promise<void>;
+  /** Artists with no picture yet, most-played first so the visible list fills first. */
+  pendingArtists(limit: number): Promise<PendingArtist[]>;
+  countPendingArtists(): Promise<number>;
+  recordArtistPicture(artistKey: string, picture: ArtistPicture): Promise<void>;
+  /** Marks an artist the lookup missed, so the sweep stops retrying it. */
+  recordArtistMiss(artistKey: string): Promise<void>;
   readJob(job: JobName): Promise<JobState | null>;
   writeJob(job: JobName, patch: JobPatch): Promise<void>;
+}
+
+/**
+ * Artists still owed a portrait: never looked up, or looked up and left
+ * without one. Shared by the work list and its count so the two can never
+ * drift into disagreeing about what "pending" means.
+ */
+function artistNeedsPicture() {
+  return or(
+    isNull(musicArtist.artistKey),
+    and(isNull(musicArtist.pictureUrl), isNull(musicArtist.attemptedAt)),
+  );
 }
 
 export function createDrizzleStore(db = getDb()): MusicStore {
@@ -172,6 +206,71 @@ export function createDrizzleStore(db = getDb()): MusicStore {
         .update(musicTrack)
         .set({ attemptedAt: new Date() })
         .where(and(eq(musicTrack.trackKey, trackKey), isNull(musicTrack.enrichedAt)));
+    },
+
+    /*
+     * Artists are not seeded anywhere, so the work list is derived from the
+     * scrobbles themselves: every distinct artist that has no row yet, or has
+     * one that was never attempted. Ordered by play count so the artists
+     * actually visible in Top artists get a picture first.
+     */
+    async pendingArtists(limit) {
+      return db
+        .select({
+          artistKey: musicScrobble.artistKey,
+          artistName: sql<string>`mode() within group (order by ${musicScrobble.artistName})`,
+        })
+        .from(musicScrobble)
+        .leftJoin(musicArtist, eq(musicArtist.artistKey, musicScrobble.artistKey))
+        .where(artistNeedsPicture())
+        .groupBy(musicScrobble.artistKey)
+        .orderBy(sql`count(*) desc`, musicScrobble.artistKey)
+        .limit(limit);
+    },
+
+    async countPendingArtists() {
+      const [row] = await db
+        .select({
+          total: sql<number>`count(distinct ${musicScrobble.artistKey})`,
+        })
+        .from(musicScrobble)
+        .leftJoin(musicArtist, eq(musicArtist.artistKey, musicScrobble.artistKey))
+        .where(artistNeedsPicture());
+      return Number(row?.total ?? 0);
+    },
+
+    async recordArtistPicture(artistKey, picture) {
+      const now = new Date();
+      await db
+        .insert(musicArtist)
+        .values({
+          artistKey,
+          artistName: picture.artistName,
+          pictureUrl: picture.pictureUrl,
+          source: picture.source,
+          enrichedAt: now,
+          attemptedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: musicArtist.artistKey,
+          set: {
+            pictureUrl: picture.pictureUrl,
+            source: picture.source,
+            enrichedAt: now,
+            attemptedAt: now,
+          },
+        });
+    },
+
+    async recordArtistMiss(artistKey) {
+      const now = new Date();
+      await db
+        .insert(musicArtist)
+        .values({ artistKey, artistName: artistKey, attemptedAt: now })
+        .onConflictDoUpdate({
+          target: musicArtist.artistKey,
+          set: { attemptedAt: now },
+        });
     },
 
     async readJob(job) {

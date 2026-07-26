@@ -16,9 +16,15 @@ export function SettingsCompact() {
         </span>
       </div>
       <div className={styles.compactRow}>
-        <span>Glass opacity</span>
+        <span>Frame opacity</span>
         <span className={styles.compactValue}>
-          {settings.glassOpacity.toFixed(2)}
+          {settings.frameOpacity.toFixed(2)}
+        </span>
+      </div>
+      <div className={styles.compactRow}>
+        <span>Pane opacity</span>
+        <span className={styles.compactValue}>
+          {settings.paneOpacity.toFixed(2)}
         </span>
       </div>
       <div className={styles.compactRow}>

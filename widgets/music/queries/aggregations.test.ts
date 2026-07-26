@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { musicScrobble, musicTrack } from "@/lib/db/schema";
+import { musicArtist, musicScrobble, musicTrack } from "@/lib/db/schema";
 import { createTestDb, seedScrobbles, seedTracks } from "@/test/pglite";
 import {
   recentlyPlayed,
@@ -29,6 +29,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.delete(musicScrobble);
   await db.delete(musicTrack);
+  await db.delete(musicArtist);
 });
 
 describe("top artists", () => {
@@ -119,6 +120,148 @@ describe("top artists", () => {
 
   it("returns an empty list against an empty store", async () => {
     expect(await topArtists("all", { db, now: NOW })).toEqual([]);
+  });
+
+  it("prefers the artist's own portrait over any record cover (R21)", async () => {
+    await seedTracks(db, [
+      {
+        artist: "Ado",
+        track: "Ibara",
+        artworkUrl: "https://cdn.example/ibara-album.jpg",
+      },
+    ]);
+    await db.insert(musicArtist).values({
+      artistKey: "ado",
+      artistName: "Ado",
+      pictureUrl: "https://cdn.example/ado-portrait.jpg",
+      source: "deezer",
+      enrichedAt: new Date(),
+      attemptedAt: new Date(),
+    });
+    await seedScrobbles(db, [
+      { artist: "Ado", track: "Ibara", playedAt: daysAgo(1) },
+    ]);
+
+    const [row] = await topArtists("all", { db, now: NOW });
+
+    expect(row.artworkUrl).toBe("https://cdn.example/ado-portrait.jpg");
+  });
+
+  it("falls back to a record cover when the portrait lookup missed", async () => {
+    await seedTracks(db, [
+      {
+        artist: "Ado",
+        track: "Ibara",
+        artworkUrl: "https://cdn.example/ibara-album.jpg",
+      },
+    ]);
+    // Attempted, no picture — the shape a miss leaves behind.
+    await db.insert(musicArtist).values({
+      artistKey: "ado",
+      artistName: "Ado",
+      attemptedAt: new Date(),
+    });
+    await seedScrobbles(db, [
+      { artist: "Ado", track: "Ibara", playedAt: daysAgo(1) },
+    ]);
+
+    const [row] = await topArtists("all", { db, now: NOW });
+
+    expect(row.artworkUrl).toBe("https://cdn.example/ibara-album.jpg");
+  });
+
+  it("does not inflate the tally by joining the artist table", async () => {
+    await db.insert(musicArtist).values({
+      artistKey: "ado",
+      artistName: "Ado",
+      pictureUrl: "https://cdn.example/ado-portrait.jpg",
+      enrichedAt: new Date(),
+      attemptedAt: new Date(),
+    });
+    await seedScrobbles(db, [
+      { artist: "Ado", track: "A", playedAt: daysAgo(1) },
+      { artist: "Ado", track: "B", playedAt: daysAgo(2) },
+      { artist: "Ado", track: "C", playedAt: daysAgo(3) },
+    ]);
+
+    const [row] = await topArtists("all", { db, now: NOW });
+
+    expect(row.plays).toBe(3);
+  });
+
+  it("carries the cover of the artist's most-played track when no portrait exists", async () => {
+    await seedTracks(db, [
+      {
+        artist: "Ado",
+        track: "Ibara",
+        artworkUrl: "https://cdn.example/ibara.jpg",
+      },
+      {
+        artist: "Ado",
+        track: "Vivarium",
+        artworkUrl: "https://cdn.example/vivarium.jpg",
+      },
+    ]);
+    await seedScrobbles(db, [
+      { artist: "Ado", track: "Ibara", playedAt: daysAgo(1) },
+      { artist: "Ado", track: "Ibara", playedAt: daysAgo(2) },
+      { artist: "Ado", track: "Ibara", playedAt: daysAgo(3) },
+      { artist: "Ado", track: "Vivarium", playedAt: daysAgo(4) },
+    ]);
+
+    const [row] = await topArtists("all", { db, now: NOW });
+
+    expect(row.plays).toBe(4);
+    expect(row.artworkUrl).toBe("https://cdn.example/ibara.jpg");
+  });
+
+  it("leaves artwork null when no play of the artist is enriched (R22)", async () => {
+    await seedScrobbles(db, [
+      { artist: "Obscure", track: "Bootleg", playedAt: daysAgo(1) },
+    ]);
+
+    const [row] = await topArtists("all", { db, now: NOW });
+
+    expect(row.artistName).toBe("Obscure");
+    expect(row.artworkUrl).toBeNull();
+  });
+
+  it("prefers a matched cover over the unmatched majority", async () => {
+    await seedTracks(db, [
+      {
+        artist: "Half Known",
+        track: "Matched",
+        artworkUrl: "https://cdn.example/only-one.jpg",
+      },
+    ]);
+    await seedScrobbles(db, [
+      { artist: "Half Known", track: "Unmatched A", playedAt: daysAgo(1) },
+      { artist: "Half Known", track: "Unmatched B", playedAt: daysAgo(2) },
+      { artist: "Half Known", track: "Matched", playedAt: daysAgo(3) },
+    ]);
+
+    const [row] = await topArtists("all", { db, now: NOW });
+
+    expect(row.plays).toBe(3);
+    expect(row.artworkUrl).toBe("https://cdn.example/only-one.jpg");
+  });
+
+  it("still bounds the window after the artwork join", async () => {
+    await seedTracks(db, [
+      {
+        artist: "Old Band",
+        track: "B",
+        artworkUrl: "https://cdn.example/old.jpg",
+      },
+    ]);
+    await seedScrobbles(db, [
+      { artist: "Recent Band", track: "A", playedAt: daysAgo(2) },
+      { artist: "Old Band", track: "B", playedAt: daysAgo(20) },
+    ]);
+
+    const week = await topArtists("week", { db, now: NOW });
+
+    expect(week.map((row) => row.artistName)).toEqual(["Recent Band"]);
   });
 });
 

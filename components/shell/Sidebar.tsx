@@ -25,7 +25,14 @@ export function Sidebar({
   const { settings, avatarUrl } = useSite();
 
   return (
-    <GlassSurface as="aside" className={styles.sidebar} aria-label="Widgets">
+    <GlassSurface
+      as="aside"
+      className={styles.sidebar}
+      // Stable hook for the transition-name rule in globals.css — see the
+      // note there on why it cannot live in the CSS module.
+      data-shell="sidebar"
+      aria-label="Widgets"
+    >
       <div className={styles.profile}>
         <div className={styles.avatar}>
           {initialsFor(settings.name || "?")}

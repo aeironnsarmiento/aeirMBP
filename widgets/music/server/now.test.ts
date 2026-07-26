@@ -164,3 +164,89 @@ describe("the short server cache", () => {
     expect(readLatestStored).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("keeping the stored history current", () => {
+  const play = (track: string, minutesAgo: number | null): LastfmPlay => ({
+    track,
+    artist: "Ado",
+    album: null,
+    imageUrl: null,
+    nowPlaying: minutesAgo === null,
+    playedAt: minutesAgo === null ? null : new Date(Date.now() - minutesAgo * 60_000),
+  });
+
+  it("hands the fetched plays to the caller so they can be persisted", async () => {
+    clearNowPlayingCache();
+    const onFreshPlays = vi.fn();
+    const plays = [play("Now", null), play("Earlier", 5)];
+
+    await readNowPlaying({
+      fetchRecent: async () => plays,
+      readLatestStored: async () => null,
+      onFreshPlays,
+    });
+
+    expect(onFreshPlays).toHaveBeenCalledWith(plays);
+  });
+
+  it("does not re-hand them while the cache is warm", async () => {
+    clearNowPlayingCache();
+    const onFreshPlays = vi.fn();
+    const deps = {
+      fetchRecent: async () => [play("Now", null)],
+      readLatestStored: async () => null,
+      onFreshPlays,
+    };
+
+    await readNowPlaying(deps);
+    await readNowPlaying(deps);
+    await readNowPlaying(deps);
+
+    // Bounded by the cache, so a room full of visitors ingests once.
+    expect(onFreshPlays).toHaveBeenCalledTimes(1);
+  });
+
+  it("still reports the pulse when persisting throws", async () => {
+    clearNowPlayingCache();
+
+    const value = await readNowPlaying({
+      fetchRecent: async () => [play("Elf", null)],
+      readLatestStored: async () => null,
+      onFreshPlays: () => {
+        throw new Error("database unreachable");
+      },
+    });
+
+    // A store that could not be brought up to date is stale, not broken.
+    expect(value?.track).toBe("Elf");
+    expect(value?.live).toBe(true);
+  });
+
+  it("hands nothing over when last.fm returned nothing", async () => {
+    clearNowPlayingCache();
+    const onFreshPlays = vi.fn();
+
+    await readNowPlaying({
+      fetchRecent: async () => [],
+      readLatestStored: async () => null,
+      onFreshPlays,
+    });
+
+    expect(onFreshPlays).not.toHaveBeenCalled();
+  });
+
+  it("hands nothing over when the last.fm read failed", async () => {
+    clearNowPlayingCache();
+    const onFreshPlays = vi.fn();
+
+    await readNowPlaying({
+      fetchRecent: async () => {
+        throw new Error("last.fm down");
+      },
+      readLatestStored: async () => null,
+      onFreshPlays,
+    });
+
+    expect(onFreshPlays).not.toHaveBeenCalled();
+  });
+});

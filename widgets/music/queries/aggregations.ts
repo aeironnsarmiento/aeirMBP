@@ -2,7 +2,7 @@ import { and, count, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
-import { musicScrobble, musicTrack } from "@/lib/db/schema";
+import { musicArtist, musicScrobble, musicTrack } from "@/lib/db/schema";
 import { windowStart, type TimeRange } from "./ranges";
 
 /**
@@ -40,6 +40,7 @@ const commonSpelling = (column: unknown) =>
 export type ArtistTally = {
   artistKey: string;
   artistName: string;
+  artworkUrl: string | null;
   plays: number;
 };
 
@@ -51,9 +52,20 @@ export async function topArtists(
     .select({
       artistKey: musicScrobble.artistKey,
       artistName: commonSpelling(musicScrobble.artistName),
+      // The artist's own portrait when the sweep has found one, falling back
+      // to the cover of their most-played record and then to initials (R22).
+      // `mode()` ignores nulls, so a part-enriched artist still gets an image.
+      artworkUrl: sql<string | null>`coalesce(
+        mode() within group (order by ${musicArtist.pictureUrl}),
+        mode() within group (order by ${musicTrack.artworkUrl})
+      )`,
       plays: count().as("plays"),
     })
     .from(musicScrobble)
+    // Both keys are primary keys on their tables, so neither join can fan a
+    // scrobble out into several rows and inflate the tally.
+    .leftJoin(musicTrack, eq(musicTrack.trackKey, musicScrobble.trackKey))
+    .leftJoin(musicArtist, eq(musicArtist.artistKey, musicScrobble.artistKey))
     .where(withinRange(range, now))
     .groupBy(musicScrobble.artistKey)
     // artistKey is the tie-break, so equal play counts order identically on

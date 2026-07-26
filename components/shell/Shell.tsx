@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
+import { GlassSurface } from "@/components/glass/GlassSurface";
 import { REGISTRY, visibleWidgets } from "@/lib/registry";
 import { backgroundById } from "@/lib/theme/backgrounds";
 import type { NowPlaying as NowPlayingValue } from "@/widgets/music/server/now";
-import { ModalHost } from "./ModalHost";
 import { Sidebar } from "./Sidebar";
 import { SiteProvider, type SiteContextValue } from "./SiteContext";
 import { TopBar } from "./TopBar";
@@ -15,8 +15,9 @@ import styles from "./shell.module.css";
 /**
  * The persistent desktop (R1).
  *
- * Never unmounts while a widget expands — the modal is a sibling layer over
- * the shell, not a replacement for it.
+ * Never unmounts while a widget expands. A widget grows inside the frame and
+ * its siblings compress beside it, so the shell is not covered, replaced, or
+ * layered over — there is one surface and it reshapes (R4).
  */
 export function Shell({
   site,
@@ -33,7 +34,10 @@ export function Shell({
   );
 
   const store = useOpenWidget(registry);
-  const background = backgroundById(site.settings.backgroundId);
+  const background = backgroundById(
+    site.settings.backgroundId,
+    site.backgroundUrl,
+  );
 
   return (
     <SiteProvider value={site}>
@@ -42,16 +46,27 @@ export function Shell({
         style={{ backgroundImage: `url(${background.src})` }}
         aria-hidden="true"
       />
-      <div className={styles.shell}>
-        <TopBar nowPlaying={nowPlaying} />
-        <Sidebar
-          registry={registry}
-          openWidgetId={store.state.widgetId}
-          onOpen={store.open}
-        />
-        <WidgetGrid registry={registry} onOpen={store.open} />
+      {/*
+        One frame holds the whole desktop (R1). It is the only surface that
+        blurs: everything below it counts as depth 2, so GlassSurface writes
+        data-blur="off" and the material falls back to tint (R3). The dropped
+        shadow on every card (R2) comes from the same rule.
+      */}
+      <div className={styles.viewport}>
+        <GlassSurface
+          as="div"
+          className={styles.shell}
+          radius="var(--radius-xl)"
+        >
+          <TopBar nowPlaying={nowPlaying} />
+          <Sidebar
+            registry={registry}
+            openWidgetId={store.state.widgetId}
+            onOpen={store.open}
+          />
+          <WidgetGrid registry={registry} store={store} />
+        </GlassSurface>
       </div>
-      <ModalHost registry={registry} store={store} />
     </SiteProvider>
   );
 }

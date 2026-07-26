@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { GlassSurface } from "@/components/glass/GlassSurface";
 import type { WidgetExpandedProps } from "@/lib/registry/types";
 import { Artwork } from "./components/Artwork";
@@ -9,6 +10,7 @@ import {
   formatPlays,
   formatRelativeTime,
 } from "./format";
+import type { MusicSummary } from "./queries/aggregations";
 import { RANGE_LABELS, TIME_RANGES, type TimeRange } from "./queries/ranges";
 import type { MusicResponse } from "./useMusic";
 import { useMusic } from "./useMusic";
@@ -32,9 +34,42 @@ export function MusicExpanded({
     limit: view === "recent" ? 60 : 40,
   });
 
+  // The totals outlive a view switch — see the note in useMusic.
+  const summary = state.summary;
+  const [statsOpen, setStatsOpen] = useState(true);
+
   return (
     <div>
-      {state.status === "ready" ? <Summary data={state.data} /> : null}
+      {summary ? (
+        <>
+          <button
+            type="button"
+            className={styles.statsToggle}
+            aria-expanded={statsOpen}
+            aria-controls="music-stats"
+            onClick={() => setStatsOpen((open) => !open)}
+          >
+            <span>{summary.scrobblesThisWeek.toLocaleString()} scrobbles this week</span>
+            <svg
+              className={styles.statsCaret}
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 4.5L6 7.5l3-3" />
+            </svg>
+          </button>
+          <div id="music-stats" hidden={!statsOpen}>
+            <Summary data={summary} />
+          </div>
+        </>
+      ) : null}
 
       {ranged ? (
         <div className={styles.controls}>
@@ -66,7 +101,7 @@ export function MusicExpanded({
   );
 }
 
-function Summary({ data }: { data: MusicResponse }) {
+function Summary({ data }: { data: MusicSummary }) {
   const {
     scrobblesThisWeek,
     perDayAverage,
@@ -74,7 +109,7 @@ function Summary({ data }: { data: MusicResponse }) {
     playsWithoutDuration,
     uniqueArtists,
     totalScrobbles,
-  } = data.summary;
+  } = data;
 
   return (
     <div className={styles.summary}>

@@ -1,10 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import {
-  BLUR_DEPTH_CEILING,
-  GlassDepthReset,
-  GlassSurface,
-} from "./GlassSurface";
+import { BLUR_DEPTH_CEILING, GlassSurface } from "./GlassSurface";
 
 describe("blur-layer ceiling (R6)", () => {
   it("blurs the outermost surface", () => {
@@ -53,15 +49,21 @@ describe("blur-layer ceiling (R6)", () => {
     }
   });
 
-  it("restarts the count inside a depth reset, so a portalled modal still blurs", () => {
+  it("suppresses the filter on every surface inside a frame, however deep", () => {
+    // The shape the shell now renders: one frame, siblings inside it, and a
+    // nested surface inside one of those.
     render(
-      <GlassSurface data-testid="shell">
-        <GlassDepthReset>
-          <GlassSurface data-testid="modal">modal</GlassSurface>
-        </GlassDepthReset>
+      <GlassSurface data-testid="frame">
+        <GlassSurface data-testid="sidebar">nav</GlassSurface>
+        <GlassSurface data-testid="card">
+          <GlassSurface data-testid="well">stat</GlassSurface>
+        </GlassSurface>
       </GlassSurface>,
     );
 
-    expect(screen.getByTestId("modal")).toHaveAttribute("data-blur", "on");
+    expect(screen.getByTestId("frame")).toHaveAttribute("data-blur", "on");
+    for (const id of ["sidebar", "card", "well"]) {
+      expect(screen.getByTestId(id)).toHaveAttribute("data-blur", "off");
+    }
   });
 });

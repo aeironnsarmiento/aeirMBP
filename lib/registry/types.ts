@@ -64,6 +64,14 @@ export type WidgetManifest = {
   /** Grid footprint on the dashboard. Defaults to one column. */
   span?: "one" | "two";
   subViews?: readonly WidgetSubView[];
+  /**
+   * Which sub-view opens first. Defaults to the first declared.
+   *
+   * Set it when presentation order and default differ — the strip reads in DOM
+   * order so that keyboard and screen-reader order match what is on screen,
+   * which leaves this as the only honest way to open on a later view.
+   */
+  defaultSubView?: string;
   /** Removed from the registry entirely for an unauthenticated caller (R16). */
   adminOnly?: boolean;
   /**

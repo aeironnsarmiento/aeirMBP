@@ -96,6 +96,31 @@ export const musicTrack = pgTable(
 );
 
 /**
+ * One row per unique artist, keyed by the same normalized identity.
+ *
+ * Separate from `music_track` because an artist's picture is not a property of
+ * any one recording — deriving it from a track's cover gives an album sleeve
+ * where a portrait belongs. `attemptedAt` set with `enrichedAt` still null
+ * means the lookup missed, and the sweep must not retry it forever.
+ */
+export const musicArtist = pgTable(
+  "music_artist",
+  {
+    artistKey: text("artist_key").primaryKey(),
+    artistName: text("artist_name").notNull(),
+    pictureUrl: text("picture_url"),
+    /** 'deezer' — null while unresolved. */
+    source: text("source"),
+    enrichedAt: timestamp("enriched_at", { withTimezone: true }),
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("music_artist_attempted_idx").on(table.attemptedAt)],
+);
+
+/**
  * Cursor and heartbeat for the long-running jobs.
  *
  * Backfill and the enrichment sweep both exceed a serverless invocation
@@ -121,4 +146,6 @@ export type MusicScrobbleRow = typeof musicScrobble.$inferSelect;
 export type MusicScrobbleInsert = typeof musicScrobble.$inferInsert;
 export type MusicTrackRow = typeof musicTrack.$inferSelect;
 export type MusicTrackInsert = typeof musicTrack.$inferInsert;
+export type MusicArtistRow = typeof musicArtist.$inferSelect;
+export type MusicArtistInsert = typeof musicArtist.$inferInsert;
 export type MusicJobStateRow = typeof musicJobState.$inferSelect;

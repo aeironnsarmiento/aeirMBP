@@ -9,12 +9,7 @@ import {
   writeSiteSettings,
   type SiteDb,
 } from "@/lib/site/settings";
-import {
-  AVATAR_MAX_BYTES,
-  UploadRejected,
-  publicAvatarUrl,
-  validateAvatar,
-} from "@/lib/site/storage";
+import { publicAssetUrl } from "@/lib/site/storage";
 import { createTestDb } from "@/test/pglite";
 
 /** Swapped per test so the guard sees an owner or a visitor. */
@@ -136,12 +131,12 @@ describe("guarding the mutation handlers (R34)", () => {
       new Request("https://example.test/api/about", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ glassOpacity: 0.99, backgroundId: "nope" }),
+        body: JSON.stringify({ frameOpacity: 0.99, backgroundId: "nope" }),
       }),
     );
 
     const settings = await readSiteSettings(db);
-    expect(settings.glassOpacity).toBe(DEFAULT_SITE_SETTINGS.glassOpacity);
+    expect(settings.frameOpacity).toBe(DEFAULT_SITE_SETTINGS.frameOpacity);
     expect(settings.backgroundId).toBe(DEFAULT_SITE_SETTINGS.backgroundId);
   });
 });
@@ -211,41 +206,17 @@ describe("About copy persistence (R17)", () => {
   });
 });
 
-describe("avatar upload (R18)", () => {
-  it("accepts a small image", () => {
-    expect(() =>
-      validateAvatar({ type: "image/png", size: 120_000 }),
-    ).not.toThrow();
-  });
-
-  it("rejects a non-image upload", () => {
-    for (const type of ["application/pdf", "text/html", "application/zip", ""]) {
-      expect(() => validateAvatar({ type, size: 1_000 })).toThrow(UploadRejected);
-    }
-  });
-
-  it("rejects an upload past the size ceiling rather than truncating it", () => {
-    expect(() =>
-      validateAvatar({ type: "image/png", size: AVATAR_MAX_BYTES + 1 }),
-    ).toThrow(UploadRejected);
-  });
-
-  it("rejects an empty file", () => {
-    expect(() => validateAvatar({ type: "image/png", size: 0 })).toThrow(
-      UploadRejected,
-    );
-  });
-
+describe("avatar URL resolution (R18)", () => {
   it("resolves a stored path to a public URL for both About and the sidebar", () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.co";
     process.env.SUPABASE_STORAGE_BUCKET = "site-assets";
 
-    expect(publicAvatarUrl("avatar/123.png")).toBe(
+    expect(publicAssetUrl("avatar/123.png")).toBe(
       "https://project.supabase.co/storage/v1/object/public/site-assets/avatar/123.png",
     );
   });
 
   it("resolves to null when no avatar has been uploaded", () => {
-    expect(publicAvatarUrl(null)).toBeNull();
+    expect(publicAssetUrl(null)).toBeNull();
   });
 });

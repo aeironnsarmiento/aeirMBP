@@ -28,13 +28,48 @@ export const BACKGROUNDS: readonly Background[] = [
 
 export const DEFAULT_BACKGROUND_ID = "aurora";
 
-export function isBackgroundId(value: unknown): value is string {
+/**
+ * The owner's own image (R11).
+ *
+ * Modelled as one more entry in the list rather than a separate mode, so the
+ * picker keeps iterating one collection, the validator keeps rejecting
+ * anything outside it, and the shell keeps resolving one id to one source.
+ */
+export const CUSTOM_BACKGROUND_ID = "custom";
+
+function isPresetBackgroundId(value: unknown): value is string {
   return BACKGROUNDS.some((background) => background.id === value);
 }
 
-export function backgroundById(id: string): Background {
+export function isBackgroundId(value: unknown): value is string {
+  return value === CUSTOM_BACKGROUND_ID || isPresetBackgroundId(value);
+}
+
+function defaultBackground(): Background {
+  return BACKGROUNDS.find(
+    (background) => background.id === DEFAULT_BACKGROUND_ID,
+  )!;
+}
+
+/**
+ * Resolves the selected id to something renderable.
+ *
+ * `customUrl` is passed in rather than derived, because resolving a stored
+ * object path needs the storage module and this one is imported by client
+ * components. Selecting the custom background without an uploaded image falls
+ * back to the default rather than stranding the site on a missing file.
+ */
+export function backgroundById(
+  id: string,
+  customUrl: string | null = null,
+): Background {
+  if (id === CUSTOM_BACKGROUND_ID) {
+    return customUrl
+      ? { id: CUSTOM_BACKGROUND_ID, label: "Yours", src: customUrl, mood: "dark" }
+      : defaultBackground();
+  }
+
   return (
-    BACKGROUNDS.find((background) => background.id === id) ??
-    BACKGROUNDS.find((background) => background.id === DEFAULT_BACKGROUND_ID)!
+    BACKGROUNDS.find((background) => background.id === id) ?? defaultBackground()
   );
 }

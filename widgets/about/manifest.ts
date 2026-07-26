@@ -6,7 +6,6 @@ import { AboutIcon } from "./icon";
 export const aboutManifest: WidgetManifest = {
   id: "about",
   title: "About",
-  tagline: "Who is running this",
   hotkey: "a",
   order: 1,
   icon: AboutIcon,
