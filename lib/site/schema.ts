@@ -87,6 +87,14 @@ const IMAGE_TYPES = [
   "image/gif",
 ] as const;
 
+/**
+ * Backgrounds only. An animated upload is re-encoded to one of these in the
+ * browser before it is sent (`lib/media/transcodeAnimation.ts`), so these are
+ * what the settings panel usually ends up storing rather than an exotic choice
+ * the owner has to make.
+ */
+const VIDEO_TYPES = ["video/mp4", "video/webm"] as const;
+
 export const ASSET_RULES = {
   // Relayed through the application server, so it stays clear of the hosting
   // platform's 4.5MB request-body limit (R17).
@@ -95,7 +103,7 @@ export const ASSET_RULES = {
   background: {
     prefix: "background",
     maxBytes: 10 * 1024 * 1024,
-    types: IMAGE_TYPES,
+    types: [...IMAGE_TYPES, ...VIDEO_TYPES],
   },
 } as const satisfies Record<
   AssetKind,

@@ -23,13 +23,21 @@
 
 /* --- Background ----------------------------------------------------------- */
 
+/* Serves both shapes the wallpaper takes: a background-image on a div, and a
+   video element. `object-fit` is the video's half of `background-size: cover`. */
 .background {
   position: fixed;
   inset: 0;
   z-index: -1;
+  width: 100%;
+  height: 100%;
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
+  object-fit: cover;
+  /* Keeps the wallpaper on its own compositor layer, so a repaint inside the
+     shell does not drag the full-viewport backdrop through a re-blur. */
+  will-change: transform;
 }
 
 /* --- Top bar -------------------------------------------------------------- */

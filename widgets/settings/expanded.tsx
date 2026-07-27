@@ -6,6 +6,7 @@ import { GlassSurface } from "@/components/glass/GlassSurface";
 import { ImageCropper } from "@/components/media/ImageCropper";
 import { shouldCrop } from "@/components/media/cropGeometry";
 import { useSite } from "@/components/shell/SiteContext";
+import { transcodeAnimation } from "@/lib/media/transcodeAnimation";
 import type { WidgetExpandedProps } from "@/lib/registry/types";
 import {
   ASSET_RULES,
@@ -221,11 +222,27 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
   /**
    * Three steps, because the file never touches this server (R13): ask for
    * permission, send the bytes straight to storage, then report the path.
+   *
+   * An animated image is re-encoded to a looping video first. That is not a
+   * format preference: an animated GIF wallpaper repaints the whole viewport
+   * every frame, and the frame above it carries the site's one backdrop
+   * filter, so each repaint re-blurs the screen. Video decodes on the
+   * platform's video path and compresses between frames instead.
    */
-  async function uploadBackground(file: File) {
+  async function uploadBackground(original: File) {
     setBusy("background");
     setStatus(null);
     try {
+      // Returns the original unless re-encoding actually produced something
+      // smaller, so this can only ever reduce what gets uploaded.
+      const file = await transcodeAnimation(original);
+      if (file !== original) {
+        setStatus({
+          tone: "ok",
+          message: `Animation re-encoded: ${formatMegabytes(original.size)} → ${formatMegabytes(file.size)}.`,
+        });
+      }
+
       validateAsset("background", file);
 
       const granted = await fetch("/api/settings/upload", {
