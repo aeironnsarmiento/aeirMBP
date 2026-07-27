@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { sizedImageUrl } from "@/lib/images/cdn";
 import { formatRelativeTime, hueFor, initialsFor } from "@/widgets/music/format";
 import type { NowPlaying as NowPlayingValue } from "@/widgets/music/server/now";
 import styles from "./NowPlaying.module.css";
 
 /** Slower than the server cache, so most polls are answered without an upstream call. */
 const POLL_INTERVAL_MS = 30_000;
+
+/** Matches `.art` in NowPlaying.module.css; only used to pick the cover-art variant. */
+const ART_PX = 26;
 
 /**
  * The chrome's listening indicator (R29).
@@ -31,6 +35,17 @@ export function NowPlaying({ initial }: { initial: NowPlayingValue | null }) {
         // Keep showing the last known value rather than blanking the chrome.
       }
     }
+
+    /*
+     * Once on mount, then on the interval.
+     *
+     * The server render already supplied `initial`, so this first poll is not
+     * about the pulse — it is about the write that rides along with it. A
+     * visitor who lands and leaves inside thirty seconds used to contribute
+     * nothing to the stored history; on a phone, where a glance is the whole
+     * visit, that was most of them.
+     */
+    void poll();
 
     const timer = setInterval(poll, POLL_INTERVAL_MS);
     return () => {
@@ -59,7 +74,11 @@ export function NowPlaying({ initial }: { initial: NowPlayingValue | null }) {
         {initialsFor(value.track)}
         {value.artworkUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- avoids the metered image optimizer
-          <img className={styles.artImage} src={value.artworkUrl} alt="" />
+          <img
+            className={styles.artImage}
+            src={sizedImageUrl(value.artworkUrl, ART_PX)}
+            alt=""
+          />
         ) : null}
       </div>
 

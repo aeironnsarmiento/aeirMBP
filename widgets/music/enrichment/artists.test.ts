@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import { createMemoryStore } from "../server/store.memory";
-import { runArtistSweep } from "./artists";
+import { drainArtistSweep, runArtistSweep } from "./artists";
 import { chooseArtist } from "./deezer";
 
 const noSleep = async () => {};
@@ -144,6 +144,106 @@ describe("artist portrait sweep", () => {
 
     // One gap between two calls, not one before the first.
     expect(sleep).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("draining the sweep to completion", () => {
+  it("keeps running batches until no artist is left pending", async () => {
+    // Three batches' worth at the test batch size, so the loop has to run more
+    // than once to finish. One click, not three.
+    const store = storeWithPlays(
+      Array.from({ length: 7 }, (_, i) => ({ artist: `A${i}`, count: 7 - i })),
+    );
+
+    const result = await drainArtistSweep({
+      store,
+      lookup: async () => "https://cdn.example/p.jpg",
+      sleep: noSleep,
+      batchSize: 3,
+    });
+
+    expect(result.enriched).toBe(7);
+    expect(result.remaining).toBe(0);
+    expect(result.done).toBe(true);
+    expect(store.artists.size).toBe(7);
+  });
+
+  it("returns with work outstanding once the budget is spent", async () => {
+    const store = storeWithPlays(
+      Array.from({ length: 9 }, (_, i) => ({ artist: `A${i}`, count: 9 - i })),
+    );
+
+    // A clock that jumps a full budget per batch, so exactly one batch runs.
+    let clock = 0;
+    const result = await drainArtistSweep({
+      store,
+      lookup: async () => "https://cdn.example/p.jpg",
+      sleep: noSleep,
+      batchSize: 2,
+      budgetMs: 1_000,
+      startedAt: 0,
+      now: () => (clock += 1_000),
+    });
+
+    expect(result.enriched).toBe(2);
+    expect(result.remaining).toBe(7);
+    // Not done — the owner can run it again and pick up where it stopped.
+    expect(result.done).toBe(false);
+  });
+
+  it("measures the budget from the caller's clock, not its own start", async () => {
+    const store = storeWithPlays([{ artist: "Ado", count: 3 }, { artist: "Bigbang", count: 2 }]);
+
+    // The track sweep already spent the whole budget before this was called.
+    const result = await drainArtistSweep({
+      store,
+      lookup: async () => "https://cdn.example/p.jpg",
+      sleep: noSleep,
+      batchSize: 1,
+      budgetMs: 10_000,
+      startedAt: 0,
+      now: () => 10_000,
+    });
+
+    // One batch still runs — the check is after the work, so a drain is never
+    // a no-op — but it stops immediately rather than overrunning maxDuration.
+    expect(result.processed).toBe(1);
+    expect(result.done).toBe(false);
+  });
+
+  it("stops instead of spinning when the provider is failing", async () => {
+    const store = storeWithPlays([
+      { artist: "Ado", count: 3 },
+      { artist: "Bigbang", count: 2 },
+    ]);
+    const lookup = vi.fn(async () => {
+      throw new Error("deezer unreachable");
+    });
+
+    const result = await drainArtistSweep({
+      store,
+      lookup,
+      sleep: noSleep,
+      batchSize: 2,
+    });
+
+    // Every artist deferred, so nothing was marked attempted and a later run
+    // retries them. Looping here would burn the whole budget for nothing.
+    expect(result.deferred).toBe(2);
+    expect(result.enriched).toBe(0);
+    expect(lookup).toHaveBeenCalledTimes(2);
+    expect(store.artists.size).toBe(0);
+  });
+
+  it("returns immediately when there is no work", async () => {
+    const store = createMemoryStore();
+    const lookup = vi.fn(async () => "https://cdn.example/p.jpg");
+
+    const result = await drainArtistSweep({ store, lookup, sleep: noSleep });
+
+    expect(result.processed).toBe(0);
+    expect(result.done).toBe(true);
+    expect(lookup).not.toHaveBeenCalled();
   });
 });
 

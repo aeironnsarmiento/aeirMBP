@@ -97,18 +97,65 @@ button:focus-visible,
  * grid template.
  */
 ::view-transition-group(*) {
-  animation-duration: var(--dur-slow);
+  animation-duration: var(--dur);
   animation-timing-function: var(--ease-out);
 }
 
 /*
- * Cross-fading a card against itself just makes both copies translucent
- * mid-flight. Holding the new state visible reads as one box changing size.
+ * Only the duration is set here. The blending is the user agent's business and
+ * overriding it is what caused the bug this comment exists for.
+ *
+ * The default is `mix-blend-mode: plus-lighter` on both snapshots, inside an
+ * `isolation: isolate` image pair. That pairing is not decoration: plus-lighter
+ * adds the two images' contributions, so an old snapshot fading 1→0 against a
+ * new one fading 0→1 holds constant total coverage the whole way across. It is
+ * the one blend mode for which a cross-fade of *translucent* images does not
+ * thin in the middle — which is exactly this design's situation, since every
+ * surface is a 0.45-alpha pane.
+ *
+ * Forcing `mix-blend-mode: normal` broke that guarantee and produced the
+ * original defect: mid-expansion the shell visibly thinned and the wallpaper
+ * read through it.
+ *
+ * Two later attempts to fix it while *keeping* `normal` both failed, in ways
+ * worth recording because each looked correct in Chrome:
+ *
+ *   1. `animation: none` plus `::view-transition-old(*) { opacity: 0 }` — hid
+ *      live content outright in Firefox. During a transition an element is
+ *      replaced by its snapshot, so zeroing the snapshot leaves nothing
+ *      painted where the element was.
+ *   2. `animation: none` alone, both snapshots opaque — with `normal` blending
+ *      the new snapshot does not occlude the old one, because it is itself
+ *      translucent. Both states paint at once: on iOS Safari the Music header
+ *      sat on top of the About body, fully legible, for the whole animation.
+ *
+ * The fix for a thinning cross-fade is not to remove the cross-fade. It is to
+ * let the blend mode that was designed for it do its job.
+ *
+ * plus-lighter's constant-coverage guarantee only holds where BOTH snapshots
+ * actually paint. The user agent sizes each snapshot `inline-size: 100%;
+ * block-size: auto` — aspect ratio preserved — so when a card changes shape
+ * (compact 232×391 ↔ expanded ~706×652, every widget switch), the two images
+ * disagree with each other and with the group box. A band covered by only one
+ * half-faded 0.45-alpha image drops to ~0.17 coverage and the wallpaper reads
+ * straight through the shell; the taller image also paints past the pane's
+ * border. Forcing both images to the group box restores full overlap, which is
+ * the precondition the blend-mode math needs. `cover` + `top` crops instead of
+ * stretching, so mid-flight content zooms rather than rubber-bands, and cards
+ * stay anchored at their headers.
+ *
+ * The fade is deliberately shorter than the group's geometry: a cross-fade of
+ * two different translucent panes is additive, so both contents read at once
+ * for its duration. Coverage stays constant either way — the shorter fade only
+ * narrows the double-exposure window, after which the settled new snapshot
+ * glides the rest of the way solid.
  */
 ::view-transition-old(*),
 ::view-transition-new(*) {
-  animation-duration: var(--dur);
-  mix-blend-mode: normal;
+  animation-duration: var(--dur-fast);
+  block-size: 100%;
+  object-fit: cover;
+  object-position: top;
 }
 
 /*
@@ -140,6 +187,35 @@ button:focus-visible,
 
 ::view-transition-group(shell-sidebar) {
   z-index: 20;
+}
+
+/*
+ * A swap — one expanded widget replacing another — pairs both big panes into
+ * a single stationary group instead of two cross-grid morphs. The shell sets
+ * `data-vt-swap` on <html> for exactly the transition's lifetime
+ * (useOpenWidget.commitWithTransition), and this rule renames whichever card
+ * is expanded on each side of the snapshot to the same slot name. Old capture:
+ * the outgoing pane. New capture: the incoming one. Same name, same grid cell,
+ * near-identical box — so the pair cross-fades in place and nothing travels.
+ *
+ * Without this, a swap flew two translucent panes across the grid at once:
+ * the outgoing pane vacated bare frame behind it, the incoming one dragged a
+ * cover-cropped ghost of its compact self, and mid-flight the shell read as
+ * transparent wreckage. Their compact cards still animate — the outgoing
+ * widget's compact card is new-only and fades in at its slot, the incoming
+ * one's is old-only and fades out — which is small, in place, and legible.
+ *
+ * `!important` because the grid names every card inline (`widget-*`); the
+ * swap rename must win over that inline declaration for both captures.
+ */
+html[data-vt-swap] [data-widget][data-state="expanded"] {
+  view-transition-name: expanded-slot !important;
+}
+
+/* The swapped pair does not move, so it has no geometry worth 240ms — the
+   whole swap reads at the fade's length. */
+::view-transition-group(expanded-slot) {
+  animation-duration: var(--dur-fast);
 }
 
 /* --- Touch scrolling ------------------------------------------------------ */

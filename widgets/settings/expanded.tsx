@@ -6,6 +6,7 @@ import { GlassSurface } from "@/components/glass/GlassSurface";
 import { ImageCropper } from "@/components/media/ImageCropper";
 import { shouldCrop } from "@/components/media/cropGeometry";
 import { useSite } from "@/components/shell/SiteContext";
+import { transcodeAnimation } from "@/lib/media/transcodeAnimation";
 import type { WidgetExpandedProps } from "@/lib/registry/types";
 import {
   ASSET_RULES,
@@ -30,6 +31,21 @@ type BackfillProgress = {
 };
 
 type Status = { tone: "ok" | "error"; message: string } | null;
+
+/**
+ * The two sweeps run against different sources at different rates, so one
+ * combined figure hid which of them still had work. It also read as "tracks
+ * pending" while counting artists too, which made a finished track sweep look
+ * stuck.
+ */
+type EnrichmentPending = { tracks: number; artists: number };
+
+function describePending(pending: EnrichmentPending | null): string {
+  if (pending === null) return "—";
+  const { tracks, artists } = pending;
+  if (tracks === 0 && artists === 0) return "complete";
+  return `${tracks.toLocaleString()} tracks · ${artists.toLocaleString()} artists pending`;
+}
 
 /** Mirrors the storage handler's response. Restated so this client file never
  *  value-imports `lib/site/storage`, which carries the storage SDK. */
@@ -105,7 +121,8 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [uploadedBackgroundName, setUploadedBackgroundName] = useState<string | null>(null);
   const [backfill, setBackfill] = useState<BackfillProgress | null>(null);
-  const [pendingEnrichment, setPendingEnrichment] = useState<number | null>(null);
+  const [pendingEnrichment, setPendingEnrichment] =
+    useState<EnrichmentPending | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [storage, setStorage] = useState<StorageReport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -127,7 +144,10 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
       }
       if (enrichResponse.ok) {
         const body = await enrichResponse.json();
-        setPendingEnrichment(body.remaining as number);
+        setPendingEnrichment({
+          tracks: body.tracks as number,
+          artists: body.artists as number,
+        });
       }
     } catch {
       // Status display only; a failure here must not break the panel.
@@ -200,13 +220,54 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
   }
 
   /**
+   * Discards the uploaded background: the stored object and the reference to
+   * it both go, and the site returns to a preset.
+   */
+  async function removeBackground() {
+    setBusy("remove");
+    setStatus(null);
+    try {
+      const response = await fetch("/api/settings/upload", { method: "DELETE" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
+
+      setUploadedBackgroundName(null);
+      setStatus({ tone: "ok", message: "Background removed." });
+      router.refresh();
+    } catch (error) {
+      setStatus({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Could not remove it.",
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
    * Three steps, because the file never touches this server (R13): ask for
    * permission, send the bytes straight to storage, then report the path.
+   *
+   * An animated image is re-encoded to a looping video first. That is not a
+   * format preference: an animated GIF wallpaper repaints the whole viewport
+   * every frame, and the frame above it carries the site's one backdrop
+   * filter, so each repaint re-blurs the screen. Video decodes on the
+   * platform's video path and compresses between frames instead.
    */
-  async function uploadBackground(file: File) {
+  async function uploadBackground(original: File) {
     setBusy("background");
     setStatus(null);
     try {
+      // Returns the original unless re-encoding actually produced something
+      // smaller, so this can only ever reduce what gets uploaded.
+      const file = await transcodeAnimation(original);
+      if (file !== original) {
+        setStatus({
+          tone: "ok",
+          message: `Animation re-encoded: ${formatMegabytes(original.size)} → ${formatMegabytes(file.size)}.`,
+        });
+      }
+
       validateAsset("background", file);
 
       const granted = await fetch("/api/settings/upload", {
@@ -401,8 +462,19 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
                 ? "Uploading…"
                 : `Upload your own (up to ${formatMegabytes(ASSET_RULES.background.maxBytes)}, GIFs welcome)`}
             </button>
+            {backgroundUrl ? (
+              <button
+                type="button"
+                className={styles.button}
+                disabled={busy !== null}
+                onClick={removeBackground}
+              >
+                {busy === "remove" ? "Removing…" : "Remove"}
+              </button>
+            ) : null}
             <span className={styles.sectionNote}>
-              Cropped to 16:9. Animated GIFs upload whole.
+              Cropped to 16:9. An animated file is re-encoded to a small looping
+              video first.
             </span>
           </div>
         )}
@@ -538,7 +610,8 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
         <div className={styles.sectionHead}>
           <span className={styles.sectionTitle}>Listening data</span>
           <span className={styles.sectionNote}>
-            Both jobs run in batches — trigger repeatedly until complete
+            Backfill and track enrichment advance one batch per run; artist
+            portraits drain in one
           </span>
         </div>
 
@@ -567,11 +640,7 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
           ) : null}
           <div className={styles.progressLine}>
             <span>enrichment</span>
-            <span>
-              {pendingEnrichment === null
-                ? "—"
-                : `${pendingEnrichment.toLocaleString()} tracks pending`}
-            </span>
+            <span>{describePending(pendingEnrichment)}</span>
           </div>
         </GlassSurface>
 

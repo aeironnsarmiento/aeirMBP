@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { assembleRegistry } from "@/lib/registry/assemble";
 import type { WidgetManifest } from "@/lib/registry/types";
-import { useOpenWidget } from "./useOpenWidget";
+import { clearPendingTransitions, useOpenWidget } from "./useOpenWidget";
 
 const NoopView = () => null;
 
@@ -263,6 +263,112 @@ describe("motion (R5, R9)", () => {
     vi.unstubAllGlobals();
   });
 
+  it("queues a second transition instead of aborting the first (R14)", async () => {
+    clearPendingTransitions();
+
+    let settle: (() => void) | undefined;
+    const first = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    let started = 0;
+    const startViewTransition = vi.fn((callback: () => void) => {
+      started += 1;
+      callback();
+      return { finished: started === 1 ? first : Promise.resolve() };
+    });
+    Object.assign(document, { startViewTransition });
+
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+    startViewTransition.mockClear();
+    started = 0;
+
+    act(() => result.current.open("music"));
+    expect(startViewTransition).toHaveBeenCalledTimes(1);
+
+    // Arrives while the first is still running. Starting it now would abort
+    // the first and leave it frozen part-faded.
+    act(() => result.current.open("projects"));
+    expect(startViewTransition).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      settle?.();
+      await first;
+    });
+
+    expect(startViewTransition).toHaveBeenCalledTimes(2);
+    expect(result.current.state.widgetId).toBe("projects");
+
+    Reflect.deleteProperty(document, "startViewTransition");
+    clearPendingTransitions();
+  });
+
+  it("releases the queue so a later transition is not deferred", async () => {
+    clearPendingTransitions();
+    const startViewTransition = vi.fn((callback: () => void) => {
+      callback();
+      return { finished: Promise.resolve() };
+    });
+    Object.assign(document, { startViewTransition });
+
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+    startViewTransition.mockClear();
+
+    await act(async () => {
+      result.current.open("music");
+      await Promise.resolve();
+    });
+
+    // The queue has drained, so this one runs synchronously again rather than
+    // paying a microtask for a transition that is long finished.
+    act(() => result.current.open("projects"));
+    expect(startViewTransition).toHaveBeenCalledTimes(2);
+    expect(result.current.state.widgetId).toBe("projects");
+
+    Reflect.deleteProperty(document, "startViewTransition");
+    clearPendingTransitions();
+  });
+
+  it("handles a skipped transition instead of leaving a rejection loose (R14)", async () => {
+    clearPendingTransitions();
+
+    // What a hidden document produces: the transition is skipped outright and
+    // both promises reject. Unhandled, this was a console error on every
+    // expansion of a backgrounded tab.
+    const startViewTransition = vi.fn((callback: () => void) => {
+      callback();
+      return {
+        ready: Promise.reject(new Error("Transition was aborted")),
+        finished: Promise.reject(new Error("Transition was aborted")),
+      };
+    });
+    Object.assign(document, { startViewTransition });
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (event: PromiseRejectionEvent) => {
+      unhandled.push(event.reason);
+    };
+    window.addEventListener("unhandledrejection", onUnhandled);
+
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+
+    await act(async () => {
+      result.current.open("music");
+      await Promise.resolve();
+    });
+
+    // The skip costs the animation and nothing else.
+    expect(result.current.state.widgetId).toBe("music");
+    expect(unhandled).toEqual([]);
+
+    // And the queue released, so the next expansion is not stuck behind it.
+    act(() => result.current.open("projects"));
+    expect(result.current.state.widgetId).toBe("projects");
+
+    window.removeEventListener("unhandledrejection", onUnhandled);
+    Reflect.deleteProperty(document, "startViewTransition");
+    clearPendingTransitions();
+  });
+
   it("still lands in the requested state when the transition throws", () => {
     const startViewTransition = vi.fn((callback: () => void) => {
       callback();
@@ -287,5 +393,131 @@ describe("motion (R5, R9)", () => {
     });
 
     expect(result.current.state.widgetId).toBe("projects");
+  });
+});
+
+describe("swap pairing (R5)", () => {
+  // The stationary-pair rule in globals.css keys off `data-vt-swap`; these
+  // tests pin the flag's lifetime, since jsdom cannot see what it renames.
+
+  function stubTransition() {
+    let settle: (() => void) | undefined;
+    const finished = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const seen: boolean[] = [];
+    const startViewTransition = vi.fn((callback: () => void) => {
+      seen.push(document.documentElement.hasAttribute("data-vt-swap"));
+      callback();
+      return { finished };
+    });
+    Object.assign(document, { startViewTransition });
+    return { seen, settle: () => settle?.(), finished };
+  }
+
+  function teardown() {
+    Reflect.deleteProperty(document, "startViewTransition");
+    document.documentElement.removeAttribute("data-vt-swap");
+    clearPendingTransitions();
+  }
+
+  it("marks the root for the length of an expanded-to-expanded switch", async () => {
+    clearPendingTransitions();
+    const { seen, settle, finished } = stubTransition();
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+
+    // `about` is open by default, so this is a swap.
+    act(() => result.current.open("music"));
+
+    expect(seen).toEqual([true]);
+    expect(document.documentElement.hasAttribute("data-vt-swap")).toBe(true);
+
+    await act(async () => {
+      settle();
+      await finished;
+    });
+    expect(document.documentElement.hasAttribute("data-vt-swap")).toBe(false);
+
+    teardown();
+  });
+
+  it("does not mark an expansion from the dashboard", async () => {
+    clearPendingTransitions();
+    const seen: boolean[] = [];
+    const startViewTransition = vi.fn((callback: () => void) => {
+      seen.push(document.documentElement.hasAttribute("data-vt-swap"));
+      callback();
+      return { finished: Promise.resolve() };
+    });
+    Object.assign(document, { startViewTransition });
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+
+    // Each transition settles before the next starts, so neither queues.
+    await act(async () => {
+      result.current.close();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      result.current.open("music");
+      await Promise.resolve();
+    });
+
+    // close() then open(): both morphs, neither capture saw the flag.
+    expect(seen).toEqual([false, false]);
+    expect(result.current.state.widgetId).toBe("music");
+    expect(document.documentElement.hasAttribute("data-vt-swap")).toBe(false);
+
+    teardown();
+  });
+
+  it("does not mark re-opening the widget that is already expanded", () => {
+    clearPendingTransitions();
+    const { seen } = stubTransition();
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+
+    act(() => result.current.open("about"));
+
+    expect(seen).toEqual([false]);
+
+    teardown();
+  });
+
+  it("clears the flag when the transition is skipped", async () => {
+    clearPendingTransitions();
+    const startViewTransition = vi.fn((callback: () => void) => {
+      callback();
+      return {
+        ready: Promise.reject(new Error("Transition was aborted")),
+        finished: Promise.reject(new Error("Transition was aborted")),
+      };
+    });
+    Object.assign(document, { startViewTransition });
+
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+
+    await act(async () => {
+      result.current.open("music");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.documentElement.hasAttribute("data-vt-swap")).toBe(false);
+
+    teardown();
+  });
+
+  it("clears the flag when starting the transition throws", () => {
+    clearPendingTransitions();
+    const startViewTransition = vi.fn(() => {
+      throw new Error("transition skipped");
+    });
+    Object.assign(document, { startViewTransition });
+
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+
+    expect(() => act(() => result.current.open("music"))).toThrow();
+    expect(document.documentElement.hasAttribute("data-vt-swap")).toBe(false);
+
+    teardown();
   });
 });

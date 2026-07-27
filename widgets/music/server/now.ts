@@ -45,7 +45,25 @@ export const LASTFM_TIMEOUT_MS = 2_500;
  */
 export const CATCH_UP_LIMIT = 50;
 
-type CacheEntry = { value: NowPlaying | null; expiresAt: number };
+/**
+ * The cached read, and the plays that read learned about.
+ *
+ * The plays are held because throwing them away is what broke ingestion. The
+ * server render calls this without a writer, fills the cache, and discards a
+ * page of finished scrobbles; the API route then hits the warm cache and has
+ * nothing to write. Keeping them means the first caller that *does* attach a
+ * writer can drain them, at no extra cost upstream — the fetch already
+ * happened.
+ *
+ * `ingested` flips only on a successful drain, so a failed write leaves the
+ * plays pending for the next caller rather than silently consuming them.
+ */
+type CacheEntry = {
+  value: NowPlaying | null;
+  plays: readonly LastfmPlay[];
+  ingested: boolean;
+  expiresAt: number;
+};
 let cache: CacheEntry | null = null;
 
 /** Test seam. Not called by request paths. */
@@ -111,7 +129,15 @@ export async function readNowPlaying({
   ttlMs = CACHE_TTL_MS,
 }: NowDeps = {}): Promise<NowPlaying | null> {
   const at = now();
-  if (cache && cache.expiresAt > at) return cache.value;
+
+  // A cache hit answers the read, but it does not answer whether storage is
+  // up to date — those were the same question, and that is the bug. The value
+  // is served from cache either way; the plays behind it are drained by the
+  // first caller that brought a writer.
+  if (cache && cache.expiresAt > at) {
+    await drainInto(cache, onFreshPlays);
+    return cache.value;
+  }
 
   let value: NowPlaying | null = null;
   let fresh: readonly LastfmPlay[] = [];
@@ -144,16 +170,33 @@ export async function readNowPlaying({
     }
   }
 
-  cache = { value, expiresAt: at + ttlMs };
+  cache = { value, plays: fresh, ingested: false, expiresAt: at + ttlMs };
 
-  if (onFreshPlays && fresh.length > 0) {
-    try {
-      await onFreshPlays(fresh);
-    } catch {
-      // The pulse is the contract here. A store that could not be brought up
-      // to date is stale, not broken, and must not blank the chrome.
-    }
-  }
+  await drainInto(cache, onFreshPlays);
 
   return value;
+}
+
+/**
+ * Hands a cache entry's plays to the writer, once.
+ *
+ * Failure is swallowed on purpose — the pulse is this function's contract, and
+ * a store that could not be brought up to date is stale rather than broken, so
+ * it must not blank the chrome. What it must not do is *hide*: the entry stays
+ * un-ingested so the next caller retries, and the caller's own `onFreshPlays`
+ * is where the failure gets recorded somewhere the owner can see it.
+ */
+async function drainInto(
+  entry: CacheEntry,
+  onFreshPlays: NowDeps["onFreshPlays"],
+): Promise<void> {
+  if (!onFreshPlays) return;
+  if (entry.ingested || entry.plays.length === 0) return;
+
+  try {
+    await onFreshPlays(entry.plays);
+    entry.ingested = true;
+  } catch {
+    // Left pending deliberately. See above.
+  }
 }

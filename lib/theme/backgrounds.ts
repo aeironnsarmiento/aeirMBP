@@ -4,7 +4,14 @@ export type Background = {
   src: string;
   /** Which appearance the image reads best in, for the picker's ordering. */
   mood: "dark" | "light";
+  /** A video needs an element, not a background-image. Presets are all stills. */
+  kind: "image" | "video";
 };
+
+/** The stored path is the only signal; storage does not hand back a MIME type. */
+function kindFor(url: string): "image" | "video" {
+  return /\.(mp4|webm)(\?|$)/i.test(url) ? "video" : "image";
+}
 
 /**
  * The committed background set (R8).
@@ -19,11 +26,11 @@ export type Background = {
  * set — the picker and the validator both read from this list.
  */
 export const BACKGROUNDS: readonly Background[] = [
-  { id: "aurora", label: "Aurora", src: "/backgrounds/aurora.svg", mood: "dark" },
-  { id: "orchid", label: "Orchid", src: "/backgrounds/orchid.svg", mood: "dark" },
-  { id: "dune", label: "Dune", src: "/backgrounds/dune.svg", mood: "dark" },
-  { id: "graphite", label: "Graphite", src: "/backgrounds/graphite.svg", mood: "dark" },
-  { id: "frost", label: "Frost", src: "/backgrounds/frost.svg", mood: "light" },
+  { id: "aurora", label: "Aurora", src: "/backgrounds/aurora.svg", mood: "dark", kind: "image" },
+  { id: "orchid", label: "Orchid", src: "/backgrounds/orchid.svg", mood: "dark", kind: "image" },
+  { id: "dune", label: "Dune", src: "/backgrounds/dune.svg", mood: "dark", kind: "image" },
+  { id: "graphite", label: "Graphite", src: "/backgrounds/graphite.svg", mood: "dark", kind: "image" },
+  { id: "frost", label: "Frost", src: "/backgrounds/frost.svg", mood: "light", kind: "image" },
 ];
 
 export const DEFAULT_BACKGROUND_ID = "aurora";
@@ -65,7 +72,13 @@ export function backgroundById(
 ): Background {
   if (id === CUSTOM_BACKGROUND_ID) {
     return customUrl
-      ? { id: CUSTOM_BACKGROUND_ID, label: "Yours", src: customUrl, mood: "dark" }
+      ? {
+          id: CUSTOM_BACKGROUND_ID,
+          label: "Yours",
+          src: customUrl,
+          mood: "dark",
+          kind: kindFor(customUrl),
+        }
       : defaultBackground();
   }
 

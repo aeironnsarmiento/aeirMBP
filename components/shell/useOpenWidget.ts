@@ -43,6 +43,56 @@ type ViewTransitionDocument = Document & {
 };
 
 /**
+ * The transition currently running, or the tail of the queue behind it.
+ *
+ * Starting a view transition while one is in flight does not replace it — it
+ * *aborts* it, and an aborted transition stops wherever it had got to. With
+ * translucent surfaces that is not a subtle glitch: the snapshots freeze
+ * part-faded and the wallpaper reads straight through the shell until
+ * something else forces a repaint. It surfaces in the console as
+ * `InvalidStateError: Transition was aborted because of invalid state`, which
+ * names the mechanism but not the consequence.
+ *
+ * So transitions queue rather than interrupt. Pressing two hotkeys quickly
+ * plays two expansions in order instead of one broken one.
+ */
+let tail: Promise<void> | null = null;
+
+/** Test seam, mirroring `clearNowPlayingCache`. Not called by the shell. */
+export function clearPendingTransitions(): void {
+  tail = null;
+}
+
+function enqueue(run: () => Promise<void>): void {
+  // When nothing is running, `run` is called synchronously — the state change
+  // must not wait on a microtask, and a `startViewTransition` that throws has
+  // to keep throwing from this call rather than becoming an unhandled
+  // rejection.
+  const next = tail === null ? run() : tail.then(run);
+  tail = next;
+
+  const release = () => {
+    if (tail === next) tail = null;
+  };
+  void next.then(release, release);
+}
+
+/**
+ * How the shell wants a transition paired, not how fast it runs.
+ *
+ * A `morph` grows or shrinks one widget between its compact and expanded
+ * boxes — the R5 signature motion, driven by the per-widget names the grid
+ * writes inline. A `swap` replaces one expanded widget with another: both big
+ * panes occupy the same grid cell, so pairing them into one stationary group
+ * (see `[data-vt-swap]` in globals.css) cross-fades them in place. Left as two
+ * morphs, a swap flies both translucent panes across the grid at once — the
+ * outgoing pane vacates bare frame, the incoming one drags a zoomed ghost of
+ * its compact self, and for the length of the flight the shell reads as
+ * transparent wreckage rather than a machine changing mode.
+ */
+export type TransitionKind = "morph" | "swap";
+
+/**
  * Commits a layout-changing state update as one continuous motion (R5).
  *
  * The grid changes both its track counts and which cell each card occupies, so
@@ -57,7 +107,10 @@ type ViewTransitionDocument = Document & {
  * behaviour `prefers-reduced-motion` already asks for (R9) — so the degraded
  * path is a supported path rather than a fallback nobody exercises.
  */
-export function commitWithTransition(update: () => void): void {
+export function commitWithTransition(
+  update: () => void,
+  kind: TransitionKind = "morph",
+): void {
   const start = (document as ViewTransitionDocument).startViewTransition;
 
   if (typeof start !== "function") {
@@ -65,7 +118,58 @@ export function commitWithTransition(update: () => void): void {
     return;
   }
 
-  start.call(document, () => flushSync(update));
+  enqueue(() => {
+    /*
+     * The attribute goes on when this transition actually starts — inside the
+     * queued task, not at call time — because a queued swap must not have its
+     * attribute stripped by the finish of the transition ahead of it. It is
+     * present for both captures (the old capture happens synchronously inside
+     * `start`, the new one after `flushSync`), which is what lets the
+     * stationary-pair rule in globals.css rename both expanded cards.
+     */
+    if (kind === "swap") {
+      document.documentElement.setAttribute("data-vt-swap", "");
+    }
+    const clear = () => {
+      if (kind === "swap") {
+        document.documentElement.removeAttribute("data-vt-swap");
+      }
+    };
+
+    let transition:
+      | { ready?: Promise<unknown>; finished?: Promise<unknown> }
+      | undefined;
+    try {
+      transition = start.call(document, () => flushSync(update)) as
+        | { ready?: Promise<unknown>; finished?: Promise<unknown> }
+        | undefined;
+    } catch (error) {
+      clear();
+      throw error;
+    }
+
+    /*
+     * Both promises get a handler, and both handlers ignore rejection.
+     *
+     * A skipped transition rejects them, and a skip is ordinary: the spec
+     * skips one outright whenever the document is hidden, so every expansion
+     * on a backgrounded tab takes this path. Left unhandled it surfaced as
+     * `unhandledRejection: InvalidStateError: Transition was aborted because
+     * of invalid state` — a real console error for a non-event, which is
+     * exactly the kind of noise that trains an owner to ignore the console.
+     *
+     * The state change itself is never at risk. `flushSync` has already
+     * committed it inside the callback; a skip costs the animation, nothing
+     * more.
+     */
+    Promise.resolve(transition?.ready).catch(() => {});
+
+    // Only `finished` gates the queue — `ready` resolves at the first frame,
+    // which is too early to know the previous motion has cleared. The swap
+    // attribute clears on the same edge, settled or skipped, so a stale flag
+    // can never re-pair a later morph.
+    return Promise.resolve(transition?.finished).then(clear, clear);
+  });
 }
 
 /** Keys typed into a field are text, not shortcuts. */
@@ -90,22 +194,37 @@ export function useOpenWidget(registry: Registry): OpenWidgetApi {
     initialState(registry),
   );
 
+  // Closes over the open widget id, so it is re-created when that changes —
+  // the hotkey listener re-binds, which is cheap, and every consumer already
+  // re-renders with the state this hook owns.
+  const openWidgetId = state.widgetId;
+
   const open = useCallback(
     (id: string, options: OpenWidgetOptions = {}) => {
       const manifest = findWidget(registry, id);
       if (!manifest) return;
 
+      // Expanded → expanded is a swap: both panes hold the same grid cell, so
+      // they pair into one stationary group instead of flying two morphs
+      // across the grid. Dashboard → expanded keeps the growing morph.
+      const kind: TransitionKind =
+        openWidgetId !== null && openWidgetId !== manifest.id
+          ? "swap"
+          : "morph";
+
       // Replacing the value rather than layering onto it is what stops two
       // widgets from being expanded when a hotkey is pressed while one is open.
-      commitWithTransition(() =>
-        setState({
-          widgetId: manifest.id,
-          subView: options.subView ?? defaultSubView(manifest),
-          params: options.params ?? {},
-        }),
+      commitWithTransition(
+        () =>
+          setState({
+            widgetId: manifest.id,
+            subView: options.subView ?? defaultSubView(manifest),
+            params: options.params ?? {},
+          }),
+        kind,
       );
     },
-    [registry],
+    [registry, openWidgetId],
   );
 
   const close = useCallback(() => {

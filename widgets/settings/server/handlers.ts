@@ -8,12 +8,16 @@ import {
 import {
   UploadRejected,
   checkStorage,
+  deleteAsset,
   isAssetPath,
   repairStorage,
   signAssetUpload,
   uploadAvatar,
 } from "@/lib/site/storage";
-import { CUSTOM_BACKGROUND_ID } from "@/lib/theme/backgrounds";
+import {
+  CUSTOM_BACKGROUND_ID,
+  DEFAULT_BACKGROUND_ID,
+} from "@/lib/theme/backgrounds";
 import { readBackfillProgress } from "@/widgets/music/server/backfill";
 
 /**
@@ -94,6 +98,39 @@ export async function handleUploadConfirm(request: Request): Promise<Response> {
       backgroundPath: body.path,
       backgroundId: CUSTOM_BACKGROUND_ID,
     });
+
+    return Response.json(settings, { headers: { "cache-control": "no-store" } });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+/**
+ * Discards the uploaded background and returns the site to a preset.
+ *
+ * The stored object goes too, not just the reference to it. Leaving the bytes
+ * behind would keep the owner paying for storage they believe they cleared,
+ * and the bucket has no other way to reach them — paths carry a timestamp, so
+ * an orphan is not something a later upload overwrites.
+ *
+ * The settings row is written first. If the delete then fails the site is
+ * already off the custom background, which is what was asked for; the reverse
+ * order can delete the bytes and leave the site pointing at them.
+ */
+export async function handleBackgroundDelete(): Promise<Response> {
+  const denied = await requireOwner();
+  if (denied) return denied;
+
+  try {
+    const current = await readSiteSettings();
+    const path = current.backgroundPath;
+
+    const settings = await writeSiteSettings({
+      backgroundPath: null,
+      backgroundId: DEFAULT_BACKGROUND_ID,
+    });
+
+    if (path && isAssetPath("background", path)) await deleteAsset(path);
 
     return Response.json(settings, { headers: { "cache-control": "no-store" } });
   } catch (error) {

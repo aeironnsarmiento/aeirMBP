@@ -87,6 +87,14 @@ const IMAGE_TYPES = [
   "image/gif",
 ] as const;
 
+/**
+ * Backgrounds only. An animated upload is re-encoded to one of these in the
+ * browser before it is sent (`lib/media/transcodeAnimation.ts`), so these are
+ * what the settings panel usually ends up storing rather than an exotic choice
+ * the owner has to make.
+ */
+const VIDEO_TYPES = ["video/mp4", "video/webm"] as const;
+
 export const ASSET_RULES = {
   // Relayed through the application server, so it stays clear of the hosting
   // platform's 4.5MB request-body limit (R17).
@@ -95,7 +103,7 @@ export const ASSET_RULES = {
   background: {
     prefix: "background",
     maxBytes: 10 * 1024 * 1024,
-    types: IMAGE_TYPES,
+    types: [...IMAGE_TYPES, ...VIDEO_TYPES],
   },
 } as const satisfies Record<
   AssetKind,
@@ -137,15 +145,30 @@ export class UploadRejected extends Error {
  * image is a corrupt file that renders as a broken asset with no error
  * anywhere to explain it.
  */
+/**
+ * The type without its parameters.
+ *
+ * A MIME type may carry them — `MediaRecorder` reports exactly what it encoded,
+ * so a re-encoded background arrives as `video/webm;codecs=vp8`. Comparing that
+ * against a list of bare types rejected the transcoder's own output, which is
+ * the kind of check that only fails once the feature starts working.
+ */
+export function baseMimeType(type: string): string {
+  return type.split(";")[0].trim().toLowerCase();
+}
+
 export function validateAsset(
   kind: AssetKind,
   file: { type: string; size: number },
 ): void {
   const rules = ASSET_RULES[kind];
 
-  if (!(rules.types as readonly string[]).includes(file.type)) {
+  if (!(rules.types as readonly string[]).includes(baseMimeType(file.type))) {
+    const accepted = rules.types
+      .map((type) => baseMimeType(type).split("/")[1].toUpperCase())
+      .join(", ");
     throw new UploadRejected(
-      `Unsupported file type: ${file.type || "unknown"}. Upload a PNG, JPEG, WebP, AVIF or GIF.`,
+      `Unsupported file type: ${file.type || "unknown"}. Accepted here: ${accepted}.`,
     );
   }
   if (file.size <= 0) {

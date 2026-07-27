@@ -214,7 +214,21 @@ export async function summary({
   db = getDb(),
   now = new Date(),
 }: Omit<QueryOptions, "limit"> = {}): Promise<MusicSummary> {
-  const weekStart = windowStart("week", now)!;
+  /*
+   * Serialized here rather than passed as a Date.
+   *
+   * A comparison built with `gte()` carries the column with it, so Drizzle
+   * knows to run the value through that column's encoder. A raw `sql` template
+   * has no column to consult: whatever is interpolated is handed to the driver
+   * as-is, and postgres.js cannot write a Date into a Bind message — it fails
+   * with `The "string" argument must be of type string ... Received an
+   * instance of Date` at parameter-description time, which surfaces as a
+   * failed query rather than a type error.
+   *
+   * Postgres infers the parameter's type from the comparison, so an ISO string
+   * is read as timestamptz against `played_at`.
+   */
+  const weekStart = windowStart("week", now)!.toISOString();
 
   const [row] = await db
     .select({

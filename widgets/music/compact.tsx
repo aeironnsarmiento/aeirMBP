@@ -12,7 +12,7 @@ import styles from "./music.module.css";
  * then shows the three most recent plays so the card has something moving in it.
  */
 export function MusicCompact() {
-  const state = useMusic({ view: "recent", limit: 3 });
+  const state = useMusic({ view: "recent", limit: 5 });
 
   if (state.status !== "ready") {
     return (

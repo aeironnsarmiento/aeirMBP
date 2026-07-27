@@ -222,6 +222,78 @@ describe("keeping the stored history current", () => {
     expect(value?.live).toBe(true);
   });
 
+  it("drains a cache the render warmed, rather than skipping the write (R3)", async () => {
+    clearNowPlayingCache();
+    const fetchRecent = vi.fn(async () => [play("Now", null), play("Earlier", 5)]);
+    const onFreshPlays = vi.fn();
+
+    // The server render: no writer attached. This is what filled the cache and
+    // starved the write path — the plays were fetched and thrown away.
+    await readNowPlaying({
+      fetchRecent,
+      readLatestStored: async () => null,
+      now: () => NOW,
+    });
+    expect(onFreshPlays).not.toHaveBeenCalled();
+
+    // The API route, arriving inside the same window. It gets the cached value
+    // and still writes what that earlier fetch learned.
+    await readNowPlaying({
+      fetchRecent,
+      readLatestStored: async () => null,
+      onFreshPlays,
+      now: () => NOW + 1_000,
+    });
+
+    expect(onFreshPlays).toHaveBeenCalledTimes(1);
+    // No second upstream call: the plays were already in hand.
+    expect(fetchRecent).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the plays pending when the write failed, so the next caller retries", async () => {
+    clearNowPlayingCache();
+    const fetchRecent = vi.fn(async () => [play("Elf", 5)]);
+    const failing = vi.fn(() => {
+      throw new Error("database unreachable");
+    });
+    const succeeding = vi.fn();
+
+    await readNowPlaying({
+      fetchRecent,
+      readLatestStored: async () => null,
+      onFreshPlays: failing,
+      now: () => NOW,
+    });
+    await readNowPlaying({
+      fetchRecent,
+      readLatestStored: async () => null,
+      onFreshPlays: succeeding,
+      now: () => NOW + 1_000,
+    });
+
+    // A swallowed failure that also consumed the plays is how four hours went
+    // missing. Failing must not count as done.
+    expect(succeeding).toHaveBeenCalledTimes(1);
+  });
+
+  it("never stores the currently-playing entry as a scrobble (R5)", async () => {
+    clearNowPlayingCache();
+    const onFreshPlays = vi.fn();
+
+    await readNowPlaying({
+      fetchRecent: async () => [play("Now", null), play("Earlier", 5)],
+      readLatestStored: async () => null,
+      onFreshPlays,
+      now: () => NOW,
+    });
+
+    // The filtering itself lives in `toScrobbleRows`; what this pins is that
+    // the entry is still handed over with its null timestamp intact, so that
+    // filter is the only thing deciding.
+    const handed = onFreshPlays.mock.calls[0][0] as LastfmPlay[];
+    expect(handed.filter((entry) => entry.playedAt === null)).toHaveLength(1);
+  });
+
   it("hands nothing over when last.fm returned nothing", async () => {
     clearNowPlayingCache();
     const onFreshPlays = vi.fn();

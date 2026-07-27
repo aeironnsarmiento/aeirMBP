@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { GlassSurface } from "@/components/glass/GlassSurface";
 import { REGISTRY, visibleWidgets } from "@/lib/registry";
 import { backgroundById } from "@/lib/theme/backgrounds";
@@ -39,13 +39,59 @@ export function Shell({
     site.backgroundUrl,
   );
 
+  /*
+   * Reduced motion stops the wallpaper on its first frame (R9).
+   *
+   * `autoplay` is a playback instruction, not a style, so the media query
+   * cannot reach it — this is the one place motion policy needs JavaScript.
+   * Pausing rather than swapping the source keeps a single element and a single
+   * fetch, and the still frame is the one the video already decoded.
+   */
+  const backgroundVideo = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = backgroundVideo.current;
+    if (!video) return;
+
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => {
+      if (query.matches) video.pause();
+      else void video.play().catch(() => {});
+    };
+
+    apply();
+    query.addEventListener("change", apply);
+    return () => query.removeEventListener("change", apply);
+  }, [background.src]);
+
   return (
     <SiteProvider value={site}>
-      <div
-        className={styles.background}
-        style={{ backgroundImage: `url(${background.src})` }}
-        aria-hidden="true"
-      />
+      {/*
+        A video wallpaper is an element, not a background-image. It is also the
+        only shape an animated background is allowed to take: an animated GIF
+        repaints the whole viewport every frame, and the frame below carries the
+        site's one backdrop filter, so each repaint re-blurs the screen (R3).
+        Uploads are re-encoded to video before they are stored.
+      */}
+      {background.kind === "video" ? (
+        <video
+          ref={backgroundVideo}
+          className={styles.background}
+          src={background.src}
+          autoPlay
+          loop
+          muted
+          playsInline
+          // Decoding it is the point; announcing it is not.
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+      ) : (
+        <div
+          className={styles.background}
+          style={{ backgroundImage: `url(${background.src})` }}
+          aria-hidden="true"
+        />
+      )}
       {/*
         One frame holds the whole desktop (R1). It is the only surface that
         blurs: everything below it counts as depth 2, so GlassSurface writes
