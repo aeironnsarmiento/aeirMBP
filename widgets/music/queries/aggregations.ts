@@ -193,54 +193,58 @@ export type MusicSummary = {
   lastScrobbleAt: Date | null;
 };
 
+/**
+ * One scan of `music_scrobble`, not four.
+ *
+ * Every figure on this panel derives from the same set of rows joined to the
+ * same track table, so `filter (where …)` computes all of them in a single
+ * pass. As four separate statements this was the read path's dominant cost:
+ * the database work is a couple of milliseconds either way, but each statement
+ * is its own round trip to the pooler, and those are ~43 ms each from a
+ * serverless invocation.
+ *
+ * The join stays a LEFT JOIN even though the minutes total wants only matched
+ * rows. `sum()` skips nulls, so an unmatched scrobble contributes nothing to
+ * the total exactly as the inner join intended (R24, AE4) — and the same join
+ * can then count those unmatched plays, which an inner join has already
+ * discarded. `track_key` is `music_track`'s primary key, so the join cannot
+ * fan a scrobble out into several rows and inflate `count(*)`.
+ */
 export async function summary({
   db = getDb(),
   now = new Date(),
 }: Omit<QueryOptions, "limit"> = {}): Promise<MusicSummary> {
   const weekStart = windowStart("week", now)!;
 
-  const [totals] = await db
+  const [row] = await db
     .select({
       totalScrobbles: count(),
       uniqueArtists: sql<number>`count(distinct ${musicScrobble.artistKey})`,
       uniqueTracks: sql<number>`count(distinct ${musicScrobble.trackKey})`,
       firstScrobbleAt: sql<Date | null>`min(${musicScrobble.playedAt})`,
       lastScrobbleAt: sql<Date | null>`max(${musicScrobble.playedAt})`,
-    })
-    .from(musicScrobble);
-
-  const [week] = await db
-    .select({ plays: count() })
-    .from(musicScrobble)
-    .where(gte(musicScrobble.playedAt, weekStart));
-
-  // Inner join plus a not-null filter is what excludes unresolved tracks from
-  // the total rather than estimating them (R24, AE4).
-  const [minutes] = await db
-    .select({
+      scrobblesThisWeek: sql<number>`count(*) filter (
+        where ${musicScrobble.playedAt} >= ${weekStart}
+      )`,
       totalMs: sql<string | null>`sum(${musicTrack.durationMs})`,
+      playsWithoutDuration: sql<number>`count(*) filter (
+        where ${musicTrack.durationMs} is null
+      )`,
     })
     .from(musicScrobble)
-    .innerJoin(musicTrack, eq(musicTrack.trackKey, musicScrobble.trackKey))
-    .where(isNotNull(musicTrack.durationMs));
+    .leftJoin(musicTrack, eq(musicTrack.trackKey, musicScrobble.trackKey));
 
-  const [unresolved] = await db
-    .select({ plays: count() })
-    .from(musicScrobble)
-    .leftJoin(musicTrack, eq(musicTrack.trackKey, musicScrobble.trackKey))
-    .where(sql`${musicTrack.durationMs} is null`);
-
-  const scrobblesThisWeek = Number(week?.plays ?? 0);
+  const scrobblesThisWeek = Number(row?.scrobblesThisWeek ?? 0);
 
   return {
     scrobblesThisWeek,
     perDayAverage: Math.round((scrobblesThisWeek / 7) * 10) / 10,
-    totalScrobbles: Number(totals?.totalScrobbles ?? 0),
-    uniqueArtists: Number(totals?.uniqueArtists ?? 0),
-    uniqueTracks: Number(totals?.uniqueTracks ?? 0),
-    listeningMinutes: Math.round(Number(minutes?.totalMs ?? 0) / 60_000),
-    playsWithoutDuration: Number(unresolved?.plays ?? 0),
-    firstScrobbleAt: totals?.firstScrobbleAt ? new Date(totals.firstScrobbleAt) : null,
-    lastScrobbleAt: totals?.lastScrobbleAt ? new Date(totals.lastScrobbleAt) : null,
+    totalScrobbles: Number(row?.totalScrobbles ?? 0),
+    uniqueArtists: Number(row?.uniqueArtists ?? 0),
+    uniqueTracks: Number(row?.uniqueTracks ?? 0),
+    listeningMinutes: Math.round(Number(row?.totalMs ?? 0) / 60_000),
+    playsWithoutDuration: Number(row?.playsWithoutDuration ?? 0),
+    firstScrobbleAt: row?.firstScrobbleAt ? new Date(row.firstScrobbleAt) : null,
+    lastScrobbleAt: row?.lastScrobbleAt ? new Date(row.lastScrobbleAt) : null,
   };
 }

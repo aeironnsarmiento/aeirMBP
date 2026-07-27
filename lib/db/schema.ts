@@ -9,6 +9,23 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+/*
+ * Every table here calls `.enableRLS()` and defines no policy, which is the
+ * intent rather than an oversight.
+ *
+ * Supabase exposes `public` through PostgREST to anyone holding the anon key,
+ * and that key is public by design — it ships to browsers. RLS with no policy
+ * denies PostgREST outright. It costs this application nothing because it does
+ * not go through PostgREST at all: `lib/db/client.ts` connects as `postgres`,
+ * which carries `rolbypassrls`, so these tables read and write exactly as
+ * before. Owner-only access is enforced by the session cookie in `lib/auth`,
+ * not here.
+ *
+ * RLS alone is not the whole guard — `anon` also held direct table grants, and
+ * `ALTER DEFAULT PRIVILEGES` was re-granting them to every new table. Both are
+ * revoked in migration 0003. `npm run db:audit` is what keeps it that way.
+ */
+
 /* -------------------------------------------------------------------------- */
 /* site_* — owner-authored shell state. Read by the shell, About and Settings. */
 /* -------------------------------------------------------------------------- */
@@ -24,7 +41,7 @@ export const siteSetting = pgTable("site_setting", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}).enableRLS();
 
 /* -------------------------------------------------------------------------- */
 /* music_* — the music widget's namespace. No other widget reads these (R15).  */
@@ -64,7 +81,7 @@ export const musicScrobble = pgTable(
     index("music_scrobble_artist_played_idx").on(table.artistKey, table.playedAt),
     index("music_scrobble_album_played_idx").on(table.albumKey, table.playedAt),
   ],
-);
+).enableRLS();
 
 /**
  * One row per unique track, keyed by the same normalized identity.
@@ -93,7 +110,7 @@ export const musicTrack = pgTable(
       .defaultNow(),
   },
   (table) => [index("music_track_attempted_idx").on(table.attemptedAt)],
-);
+).enableRLS();
 
 /**
  * One row per unique artist, keyed by the same normalized identity.
@@ -118,7 +135,7 @@ export const musicArtist = pgTable(
       .defaultNow(),
   },
   (table) => [index("music_artist_attempted_idx").on(table.attemptedAt)],
-);
+).enableRLS();
 
 /**
  * Cursor and heartbeat for the long-running jobs.
@@ -139,7 +156,7 @@ export const musicJobState = pgTable("music_job_state", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-});
+}).enableRLS();
 
 export type SiteSettingRow = typeof siteSetting.$inferSelect;
 export type MusicScrobbleRow = typeof musicScrobble.$inferSelect;

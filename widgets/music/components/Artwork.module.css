@@ -25,15 +25,39 @@
   height: 100%;
   object-fit: cover;
   opacity: 0;
-  transition: opacity var(--dur) var(--ease-out);
 }
 
+/*
+ * An animation rather than a transition, deliberately.
+ *
+ * A transition needs a previous computed value to interpolate away from. When
+ * a cover decodes fast enough that `data-loaded` flips in the same frame the
+ * image first has style resolved — a cached image, or a re-render on view
+ * switch — there is no previous value, and Chrome leaves the transition
+ * `running` at `currentTime: 0` permanently. The image is fully downloaded and
+ * `data-loaded="true"`, but computed opacity stays 0 and it never paints: not
+ * after seconds, not after a forced reflow. Roughly a fifth of the tiles in a
+ * 40-row Top artists list were landing in that state.
+ *
+ * Keyframes carry their own `from`, so the reveal cannot depend on a value
+ * that was never committed. `forwards` holds the end state after it runs.
+ */
 .image[data-loaded="true"] {
-  opacity: 1;
+  animation: artwork-reveal var(--dur) var(--ease-out) forwards;
+}
+
+@keyframes artwork-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .image {
-    transition: none;
+  .image[data-loaded="true"] {
+    animation: none;
+    opacity: 1;
   }
 }

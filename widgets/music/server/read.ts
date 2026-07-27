@@ -45,8 +45,14 @@ export async function handleMusicRead(request: Request): Promise<Response> {
   const headers = { "cache-control": "public, max-age=60, s-maxage=300" };
 
   try {
-    const payload = await readView(view, range, limit);
-    return Response.json({ ...payload, summary: await summary() }, { headers });
+    // Concurrent, not sequential: the summary does not depend on the view, and
+    // awaiting them in turn spent two round trips to the pooler where one
+    // would do.
+    const [payload, totals] = await Promise.all([
+      readView(view, range, limit),
+      summary(),
+    ]);
+    return Response.json({ ...payload, summary: totals }, { headers });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "music-read-failed" },

@@ -103,6 +103,7 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
   const [paneOpacity, setPaneOpacity] = useState(settings.paneOpacity);
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [uploadedBackgroundName, setUploadedBackgroundName] = useState<string | null>(null);
   const [backfill, setBackfill] = useState<BackfillProgress | null>(null);
   const [pendingEnrichment, setPendingEnrichment] = useState<number | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -351,7 +352,9 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
                 save({ backgroundId: CUSTOM_BACKGROUND_ID }, "background")
               }
             >
-              <span className={styles.backgroundLabel}>Yours</span>
+              <span className={styles.backgroundLabel}>
+                {uploadedBackgroundName ?? "Yours"}
+              </span>
             </button>
           ) : null}
         </div>
@@ -363,7 +366,10 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
           className="sr-only"
           onChange={(event) => {
             const file = event.target.files?.[0];
-            if (file) chooseFile("background", file);
+            if (file) {
+              setUploadedBackgroundName(file.name);
+              chooseFile("background", file);
+            }
             event.target.value = "";
           }}
         />

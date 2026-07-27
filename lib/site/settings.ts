@@ -1,4 +1,4 @@
-import { inArray } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
@@ -115,15 +115,28 @@ export async function writeSiteSettings(
   if (entries.length === 0) return readSiteSettings(db);
 
   const now = new Date();
-  for (const [field, value] of entries) {
-    await db
-      .insert(siteSetting)
-      .values({ key: SETTING_KEYS[field], value: value as never, updatedAt: now })
-      .onConflictDoUpdate({
-        target: siteSetting.key,
-        set: { value: value as never, updatedAt: now },
-      });
-  }
+
+  // One statement, not one per key. A loop of separate upserts is not just N
+  // round trips — it has no atomicity, so a connection dropped halfway through
+  // a Settings save leaves the site with some of the owner's changes applied
+  // and the rest silently lost. A single multi-row upsert either lands whole
+  // or not at all.
+  await db
+    .insert(siteSetting)
+    .values(
+      entries.map(([field, value]) => ({
+        key: SETTING_KEYS[field],
+        value: value as never,
+        updatedAt: now,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: siteSetting.key,
+      set: {
+        value: sql`excluded.value`,
+        updatedAt: sql`excluded.updated_at`,
+      },
+    });
 
   return readSiteSettings(db);
 }

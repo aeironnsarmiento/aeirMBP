@@ -40,8 +40,24 @@ fifth widget is one directory plus one line in `lib/registry/index.ts`.
 npm install
 cp .env.example .env.local   # then fill it in — see below
 npm run db:migrate
+npm run db:audit             # confirms the schema is not publicly exposed
 npm run dev
 ```
+
+### Database safety
+
+`public` is reachable through Supabase's PostgREST by anyone holding the anon
+key, and that key ships to browsers. Nothing in this app goes through PostgREST
+— `lib/db/client.ts` connects as `postgres` over a direct socket — so every
+table has RLS enabled with no policy, and `anon` and `authenticated` hold no
+grants. That combination denies PostgREST outright while leaving the app
+untouched, because `postgres` carries `rolbypassrls`.
+
+The test suite cannot catch a regression here: it runs against PGlite, where
+Supabase's roles do not exist. `npm run db:audit` is what checks, and it exits
+non-zero if RLS is off anywhere, if `anon` regains a grant, or if
+`ALTER DEFAULT PRIVILEGES` starts handing new tables to `anon` again. Run it
+after any migration that creates a table.
 
 ### Environment
 
