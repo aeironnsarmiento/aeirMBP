@@ -35,9 +35,12 @@
   background-size: cover;
   background-repeat: no-repeat;
   object-fit: cover;
-  /* Keeps the wallpaper on its own compositor layer, so a repaint inside the
-     shell does not drag the full-viewport backdrop through a re-blur. */
-  will-change: transform;
+  /*
+   * No `will-change` here. Promoting this element creates a stacking context,
+   * and with `z-index: -1` that paints the wallpaper *behind* the page
+   * background — the site renders flat black with the image still loaded and
+   * still invisible.
+   */
 }
 
 /* --- Top bar -------------------------------------------------------------- */
