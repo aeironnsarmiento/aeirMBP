@@ -22,6 +22,8 @@
  * one that does not upload.
  */
 
+import { baseMimeType } from "@/lib/site/schema";
+
 /** Behind a blurred frame, detail past this is invisible; it only costs bitrate. */
 const MAX_EDGE = 960;
 /** Bounds both the encode wait and the output size. Wallpapers loop; they do not narrate. */
@@ -152,9 +154,13 @@ export async function transcodeAnimation(original: File): Promise<File> {
     // Keeping whichever is smaller means this can only ever help.
     if (blob.size >= original.size) return original;
 
-    const extension = mimeType.startsWith("video/mp4") ? "mp4" : "webm";
+    // Stored without the codec parameter. `MediaRecorder` reports the exact
+    // encoding it used (`video/webm;codecs=vp8`), which is more than storage
+    // or the validator want to know, and more than any of them match on.
+    const base = baseMimeType(mimeType);
+    const extension = base === "video/mp4" ? "mp4" : "webm";
     const stem = original.name.replace(/\.[^.]+$/, "") || "background";
-    return new File([blob], `${stem}.${extension}`, { type: blob.type });
+    return new File([blob], `${stem}.${extension}`, { type: base });
   } catch {
     // Unsupported codec path, decoder rejection, or a frame that would not
     // decode — the original still uploads.

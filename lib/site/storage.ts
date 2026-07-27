@@ -27,12 +27,20 @@ import {
 // is the module a client component can reach.
 export { UploadRejected } from "./schema";
 
+/*
+ * Load-bearing beyond tidiness: the stored extension is the only thing that
+ * tells the shell whether a background is a still or a video (`kindFor` in
+ * lib/theme/backgrounds.ts), because storage hands back a path and not a MIME
+ * type. A type missing from this map lands as `.bin` and renders as an image.
+ */
 const EXTENSIONS: Record<string, string> = {
   "image/png": "png",
   "image/jpeg": "jpg",
   "image/webp": "webp",
   "image/avif": "avif",
   "image/gif": "gif",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
 };
 
 export function bucketName(): string {
@@ -352,6 +360,19 @@ export async function repairStorage(): Promise<StorageCheck> {
   }
 
   return checkStorage();
+}
+
+/**
+ * Removes a stored object.
+ *
+ * A missing object is not an error: the settings row and the bucket can drift
+ * apart — a failed upload, a manual deletion — and the only thing the owner
+ * asked for is that it be gone. Reporting "not found" would leave them with a
+ * background they cannot clear.
+ */
+export async function deleteAsset(path: string): Promise<void> {
+  const { error } = await serviceClient().storage.from(bucketName()).remove([path]);
+  if (error) throw new Error(`Storage refused to delete the file: ${error.message}`);
 }
 
 /** Resolves a stored object path to a public URL, or null when unset. */

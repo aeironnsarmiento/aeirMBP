@@ -220,6 +220,31 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
   }
 
   /**
+   * Discards the uploaded background: the stored object and the reference to
+   * it both go, and the site returns to a preset.
+   */
+  async function removeBackground() {
+    setBusy("remove");
+    setStatus(null);
+    try {
+      const response = await fetch("/api/settings/upload", { method: "DELETE" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
+
+      setUploadedBackgroundName(null);
+      setStatus({ tone: "ok", message: "Background removed." });
+      router.refresh();
+    } catch (error) {
+      setStatus({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Could not remove it.",
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
    * Three steps, because the file never touches this server (R13): ask for
    * permission, send the bytes straight to storage, then report the path.
    *
@@ -437,8 +462,19 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
                 ? "Uploading…"
                 : `Upload your own (up to ${formatMegabytes(ASSET_RULES.background.maxBytes)}, GIFs welcome)`}
             </button>
+            {backgroundUrl ? (
+              <button
+                type="button"
+                className={styles.button}
+                disabled={busy !== null}
+                onClick={removeBackground}
+              >
+                {busy === "remove" ? "Removing…" : "Remove"}
+              </button>
+            ) : null}
             <span className={styles.sectionNote}>
-              Cropped to 16:9. Animated GIFs upload whole.
+              Cropped to 16:9. An animated file is re-encoded to a small looping
+              video first.
             </span>
           </div>
         )}

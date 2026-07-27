@@ -38,6 +38,23 @@ describe("object paths", () => {
     expect(assetPath("background", "image/gif", 123)).toBe("background/123.gif");
   });
 
+  it("gives a re-encoded background a video extension, not .bin", () => {
+    /*
+     * Load-bearing. Storage returns a path and not a MIME type, so the
+     * extension is the only thing telling the shell to render a <video>
+     * instead of a background-image. A type missing from the extension map
+     * lands as `.bin` and plays as nothing at all.
+     */
+    expect(assetPath("background", "video/mp4", 123)).toBe("background/123.mp4");
+    expect(assetPath("background", "video/webm", 123)).toBe("background/123.webm");
+  });
+
+  it("mints a path every accepted type can be stored under", () => {
+    for (const type of ACCEPTED_ASSET_TYPES) {
+      expect(assetPath("background", type, 1)).not.toMatch(/\.bin$/);
+    }
+  });
+
   it("mints a new path per upload, so a CDN never serves the old bytes", () => {
     expect(assetPath("avatar", "image/png", 1)).not.toBe(
       assetPath("avatar", "image/png", 2),

@@ -114,6 +114,20 @@ export async function writeSiteSettings(
 
   if (entries.length === 0) return readSiteSettings(db);
 
+  /*
+   * `null` clears a setting, and clearing means removing the row.
+   *
+   * `value` is `jsonb NOT NULL`, so null is not a value this table can hold —
+   * writing one fails the insert outright. Absence is the representation the
+   * schema already has for "unset", and the reader is built for it: a missing
+   * key falls through to the defaults. Storing a JSON `null` instead would put
+   * a second spelling of "unset" in the table for no gain.
+   */
+  const cleared = entries
+    .filter(([, value]) => value === null)
+    .map(([field]) => SETTING_KEYS[field]);
+  const written = entries.filter(([, value]) => value !== null);
+
   const now = new Date();
 
   // One statement, not one per key. A loop of separate upserts is not just N
@@ -121,22 +135,30 @@ export async function writeSiteSettings(
   // a Settings save leaves the site with some of the owner's changes applied
   // and the rest silently lost. A single multi-row upsert either lands whole
   // or not at all.
-  await db
-    .insert(siteSetting)
-    .values(
-      entries.map(([field, value]) => ({
-        key: SETTING_KEYS[field],
-        value: value as never,
-        updatedAt: now,
-      })),
-    )
-    .onConflictDoUpdate({
-      target: siteSetting.key,
-      set: {
-        value: sql`excluded.value`,
-        updatedAt: sql`excluded.updated_at`,
-      },
-    });
+  await db.transaction(async (tx) => {
+    if (cleared.length > 0) {
+      await tx.delete(siteSetting).where(inArray(siteSetting.key, cleared));
+    }
+
+    if (written.length > 0) {
+      await tx
+        .insert(siteSetting)
+        .values(
+          written.map(([field, value]) => ({
+            key: SETTING_KEYS[field],
+            value: value as never,
+            updatedAt: now,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: siteSetting.key,
+          set: {
+            value: sql`excluded.value`,
+            updatedAt: sql`excluded.updated_at`,
+          },
+        });
+    }
+  });
 
   return readSiteSettings(db);
 }
