@@ -92,3 +92,65 @@ export async function runArtistSweep({
     done: pending.length === 0 || remaining === 0,
   };
 }
+
+export type DrainDeps = ArtistSweepDeps & {
+  /** Milliseconds the drain may spend, measured from `startedAt`. */
+  budgetMs?: number;
+  /** When the caller's clock started — the request, not this call. */
+  startedAt?: number;
+  now?: () => number;
+};
+
+/**
+ * Runs batches until the work list empties or the budget runs out.
+ *
+ * One batch per owner click meant the owner had to know how many clicks "done"
+ * was, and stopping early left artists on an album sleeve where a portrait
+ * belongs with nothing on screen to say why. The sweep was already resumable,
+ * so this is a loop around it rather than a change to it: a run cut short by
+ * the budget resumes exactly where it stopped.
+ *
+ * `startedAt` is the caller's clock rather than this function's, because the
+ * track sweep runs first in the same serverless invocation and spends the same
+ * ceiling. Measuring from here would let the two together exceed it.
+ *
+ * Three ways out, and the third is the one that matters: a batch where every
+ * artist deferred means the provider is failing, and those artists are
+ * deliberately left un-attempted so a later run retries them. Looping on that
+ * would spin against a dead provider for the whole budget, accomplishing
+ * nothing and recording nothing.
+ */
+export async function drainArtistSweep({
+  budgetMs = Infinity,
+  startedAt,
+  now = Date.now,
+  ...sweepDeps
+}: DrainDeps = {}): Promise<ArtistSweepResult> {
+  const began = startedAt ?? now();
+
+  const total: ArtistSweepResult = {
+    processed: 0,
+    enriched: 0,
+    missed: 0,
+    deferred: 0,
+    remaining: 0,
+    done: false,
+  };
+
+  for (;;) {
+    const batch = await runArtistSweep(sweepDeps);
+
+    total.processed += batch.processed;
+    total.enriched += batch.enriched;
+    total.missed += batch.missed;
+    total.deferred += batch.deferred;
+    total.remaining = batch.remaining;
+    total.done = batch.done;
+
+    if (batch.done || batch.processed === 0) break;
+    if (batch.deferred === batch.processed) break;
+    if (now() - began >= budgetMs) break;
+  }
+
+  return total;
+}

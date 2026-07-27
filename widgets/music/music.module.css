@@ -114,6 +114,42 @@
   color: var(--ink-faint);
 }
 
+/*
+ * The listening-time card, which is a button while its three neighbours are
+ * not. The affordance has to be legible without making it look like a
+ * different kind of object — so the resting state is identical to the others
+ * and the difference shows on hover, focus and press.
+ *
+ * 44px is the same floor `.statsToggle` and `.range` already meet (WCAG
+ * 2.5.5). The card's own padding clears it at every breakpoint; the floor is
+ * declared anyway so a future type-scale change cannot quietly drop under it.
+ */
+.statToggleCard {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.statToggleCard:hover {
+  background: var(--glass-surface-strong);
+}
+
+.statToggleCard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statToggleCard {
+    transition: none;
+  }
+}
+
 /* --- Controls ------------------------------------------------------------- */
 
 /* Disclosure for the library totals. The headline figure stays on the button

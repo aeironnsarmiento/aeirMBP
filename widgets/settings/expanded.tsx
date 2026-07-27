@@ -31,6 +31,21 @@ type BackfillProgress = {
 
 type Status = { tone: "ok" | "error"; message: string } | null;
 
+/**
+ * The two sweeps run against different sources at different rates, so one
+ * combined figure hid which of them still had work. It also read as "tracks
+ * pending" while counting artists too, which made a finished track sweep look
+ * stuck.
+ */
+type EnrichmentPending = { tracks: number; artists: number };
+
+function describePending(pending: EnrichmentPending | null): string {
+  if (pending === null) return "—";
+  const { tracks, artists } = pending;
+  if (tracks === 0 && artists === 0) return "complete";
+  return `${tracks.toLocaleString()} tracks · ${artists.toLocaleString()} artists pending`;
+}
+
 /** Mirrors the storage handler's response. Restated so this client file never
  *  value-imports `lib/site/storage`, which carries the storage SDK. */
 type StorageReport = { ok: boolean; fault: string | null; message: string };
@@ -105,7 +120,8 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [uploadedBackgroundName, setUploadedBackgroundName] = useState<string | null>(null);
   const [backfill, setBackfill] = useState<BackfillProgress | null>(null);
-  const [pendingEnrichment, setPendingEnrichment] = useState<number | null>(null);
+  const [pendingEnrichment, setPendingEnrichment] =
+    useState<EnrichmentPending | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [storage, setStorage] = useState<StorageReport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -127,7 +143,10 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
       }
       if (enrichResponse.ok) {
         const body = await enrichResponse.json();
-        setPendingEnrichment(body.remaining as number);
+        setPendingEnrichment({
+          tracks: body.tracks as number,
+          artists: body.artists as number,
+        });
       }
     } catch {
       // Status display only; a failure here must not break the panel.
@@ -538,7 +557,8 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
         <div className={styles.sectionHead}>
           <span className={styles.sectionTitle}>Listening data</span>
           <span className={styles.sectionNote}>
-            Both jobs run in batches — trigger repeatedly until complete
+            Backfill and track enrichment advance one batch per run; artist
+            portraits drain in one
           </span>
         </div>
 
@@ -567,11 +587,7 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
           ) : null}
           <div className={styles.progressLine}>
             <span>enrichment</span>
-            <span>
-              {pendingEnrichment === null
-                ? "—"
-                : `${pendingEnrichment.toLocaleString()} tracks pending`}
-            </span>
+            <span>{describePending(pendingEnrichment)}</span>
           </div>
         </GlassSurface>
 

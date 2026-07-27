@@ -61,7 +61,13 @@ export type PendingArtist = {
   artistName: string;
 };
 
-export type JobName = "backfill" | "poll" | "enrichment";
+/**
+ * `catchup` is the ingest that rides along with the now-playing pulse. It gets
+ * its own row rather than reusing `poll`, whose `lastRunAt` doubles as the
+ * Supabase keepalive heartbeat — folding a request-time write into that row
+ * would make "the scheduler ran" and "somebody loaded the page" the same fact.
+ */
+export type JobName = "backfill" | "poll" | "enrichment" | "catchup";
 
 export type JobState = {
   job: JobName;

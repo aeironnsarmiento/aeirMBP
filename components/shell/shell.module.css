@@ -531,6 +531,35 @@
   }
 
   /*
+   * Which makes this the only way out, so it has to meet the same 44px floor
+   * as the tabs beside it (WCAG 2.5.5). At 30px it was the smallest target in
+   * the sheet and the one with no keyboard alternative behind it.
+   *
+   * The ring stays 30px — the control should not look heavier than the tab
+   * strip — and the box grows around it, which is what the guideline asks for.
+   */
+  .cardClose {
+    width: 44px;
+    height: 44px;
+    border-color: transparent;
+    background:
+      radial-gradient(
+        circle at center,
+        var(--glass-surface-weak) 0 15px,
+        transparent 15px
+      );
+  }
+
+  .cardClose:hover {
+    background:
+      radial-gradient(
+        circle at center,
+        var(--glass-surface-strong) 0 15px,
+        transparent 15px
+      );
+  }
+
+  /*
    * The strip gets its own full-width row rather than competing with the title
    * and the close control, which is what was clipping the last view's label
    * mid-word with no sign it could be scrolled.

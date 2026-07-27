@@ -101,7 +101,8 @@ export function MusicExpanded({
   );
 }
 
-function Summary({ data }: { data: MusicSummary }) {
+/** Exported for its own test, as `ProjectsGallery` is. */
+export function Summary({ data }: { data: MusicSummary }) {
   const {
     scrobblesThisWeek,
     perDayAverage,
@@ -110,6 +111,8 @@ function Summary({ data }: { data: MusicSummary }) {
     uniqueArtists,
     totalScrobbles,
   } = data;
+
+  const [exact, setExact] = useState(false);
 
   return (
     <div className={styles.summary}>
@@ -127,14 +130,38 @@ function Summary({ data }: { data: MusicSummary }) {
         <div className={styles.statLabel}>Per day</div>
       </GlassSurface>
 
-      <GlassSurface tone="well" className={styles.stat}>
+      {/*
+       * The one stat worth interrogating, so the one stat that is a control.
+       *
+       * "20d 22h" is the right resting figure — it is the one that means
+       * something at a glance — but it is also rounded, and the caveat that
+       * makes it defensible (unmatched tracks are excluded rather than
+       * estimated, R24) was sitting on the card face as permanent small print.
+       * Both belong to the same question, so both live behind the same tap:
+       * the exact minutes and what those minutes leave out arrive together.
+       */}
+      <GlassSurface
+        as="button"
+        type="button"
+        tone="well"
+        className={`${styles.stat} ${styles.statToggleCard}`}
+        aria-pressed={exact}
+        aria-label={
+          exact
+            ? `Listening time, ${listeningMinutes.toLocaleString()} minutes. Show rounded.`
+            : `Listening time, ${formatListeningTime(listeningMinutes)}. Show exact minutes.`
+        }
+        onClick={() => setExact((showing) => !showing)}
+      >
         <div className={styles.statValue}>
-          {formatListeningTime(listeningMinutes)}
+          {exact
+            ? listeningMinutes.toLocaleString()
+            : formatListeningTime(listeningMinutes)}
         </div>
-        <div className={styles.statLabel}>Listening time</div>
-        {playsWithoutDuration > 0 ? (
-          // Stated rather than hidden: the total is defensible precisely
-          // because unmatched tracks are excluded, not estimated (R24).
+        <div className={styles.statLabel}>
+          {exact ? "Minutes listened" : "Listening time"}
+        </div>
+        {exact && playsWithoutDuration > 0 ? (
           <div className={styles.statNote}>
             {playsWithoutDuration.toLocaleString()} plays excluded, no duration
           </div>

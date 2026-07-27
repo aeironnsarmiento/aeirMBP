@@ -32,6 +32,17 @@ export function NowPlaying({ initial }: { initial: NowPlayingValue | null }) {
       }
     }
 
+    /*
+     * Once on mount, then on the interval.
+     *
+     * The server render already supplied `initial`, so this first poll is not
+     * about the pulse — it is about the write that rides along with it. A
+     * visitor who lands and leaves inside thirty seconds used to contribute
+     * nothing to the stored history; on a phone, where a glance is the whole
+     * visit, that was most of them.
+     */
+    void poll();
+
     const timer = setInterval(poll, POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
