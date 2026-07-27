@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { sizedImageUrl } from "@/lib/images/cdn";
 import { hueFor, initialsFor } from "../format";
 import styles from "./Artwork.module.css";
 
@@ -19,8 +20,9 @@ export type ArtworkProps = {
  * hue is derived from the title, so the same track always looks the same.
  *
  * A plain `img` rather than next/image on purpose: Vercel's Hobby plan meters
- * image optimization, and these are already-small remote covers that gain
- * nothing from being re-encoded.
+ * image optimization, and the provider already publishes every size we need —
+ * `sizedImageUrl` picks the right one from the URL, so there is nothing for an
+ * optimizer to do that a string replacement has not already done.
  */
 export function Artwork({ src, title, size = 44 }: ArtworkProps) {
   const [failed, setFailed] = useState(false);
@@ -61,7 +63,7 @@ export function Artwork({ src, title, size = 44 }: ArtworkProps) {
         <img
           ref={captureLoaded}
           className={styles.image}
-          src={src}
+          src={sizedImageUrl(src, size)}
           alt={title}
           loading="lazy"
           decoding="async"
