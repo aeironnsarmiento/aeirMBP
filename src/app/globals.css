@@ -96,9 +96,22 @@ button:focus-visible,
  * is why the motion comes from a view transition rather than an interpolated
  * grid template.
  */
+/*
+ * `--dur-slow`, not `--dur`, because duration has to scale with the distance
+ * travelled — the one point Apple's HIG and Material both make about motion.
+ * `--dur` is the mid-scale token: a progress fill, an artwork reveal, a 2px
+ * hover lift. A card expanding is a few hundred pixels of growth, mostly
+ * vertical (measured 334px to 649px tall on a desktop viewport), and at 240ms
+ * that read as a snap rather than a movement.
+ *
+ * 420ms sits inside every published range for a transition of this size
+ * (Material's medium4 is 400ms; Apple's guidance for full-page transitions is
+ * 300-500ms) and stays under the ~500ms mark where a transition stops
+ * covering latency and starts adding it.
+ */
 ::view-transition-group(*) {
-  animation-duration: var(--dur);
-  animation-timing-function: var(--ease-out);
+  animation-duration: var(--dur-slow);
+  animation-timing-function: var(--ease-transform);
 }
 
 /*
@@ -134,28 +147,60 @@ button:focus-visible,
  *
  * plus-lighter's constant-coverage guarantee only holds where BOTH snapshots
  * actually paint. The user agent sizes each snapshot `inline-size: 100%;
- * block-size: auto` — aspect ratio preserved — so when a card changes shape
- * (compact 232×391 ↔ expanded ~706×652, every widget switch), the two images
- * disagree with each other and with the group box. A band covered by only one
- * half-faded 0.45-alpha image drops to ~0.17 coverage and the wallpaper reads
- * straight through the shell; the taller image also paints past the pane's
- * border. Forcing both images to the group box restores full overlap, which is
- * the precondition the blend-mode math needs. `cover` + `top` crops instead of
- * stretching, so mid-flight content zooms rather than rubber-bands, and cards
- * stay anchored at their headers.
+ * block-size: auto` — aspect ratio preserved — so when a card changes shape,
+ * the two images disagree with each other and with the group box. Wherever
+ * only one of them reaches, coverage is that image's fade opacity instead of
+ * the full sum, and the wallpaper reads through.
  *
- * The fade is deliberately shorter than the group's geometry: a cross-fade of
- * two different translucent panes is additive, so both contents read at once
- * for its duration. Coverage stays constant either way — the shorter fade only
- * narrows the double-exposure window, after which the settled new snapshot
- * glides the rest of the way solid.
+ * Sizing both to the group box is what restores the overlap the blend maths
+ * needs. `block-size: 100%` overrides the UA's `auto`, and `object-fit: cover`
+ * fills the box at every frame rather than preserving an aspect ratio that no
+ * longer matches it.
+ *
+ * `cover` was reverted once, for a real reason: forcing a snapshot into a box
+ * on its way to roughly double the height upscales it to match, and a replaced
+ * element is `overflow: visible` unless told otherwise, so the enlarged image
+ * painted across the sidebar and off the viewport. `overflow: clip` closes
+ * that independently of the sizing, which is what makes `cover` affordable
+ * again — the upscaled content is now bounded by its own group.
+ *
+ * The 1:1 alternative (`object-fit: none`) was tried in between and is worse
+ * than either. Measured with scripts/motion-probe.mjs against the built app:
+ * every widget pair had regions inside its group box that NEITHER snapshot
+ * covered — a collapse put `widget-about` in a 245.6x320.8 box holding a
+ * 232x318 old image and a 307.3x185.9 new one, leaving total coverage of zero
+ * below y=185.9. Not a thin band; a hole. The trade it was chosen for does not
+ * exist.
+ *
+ * Mid-flight content zooms under `cover`, and that is the accepted cost.
  */
 ::view-transition-old(*),
 ::view-transition-new(*) {
-  animation-duration: var(--dur-fast);
+  animation-duration: var(--dur-vt-fade);
+  /*
+   * Linear: plus-lighter holds total coverage constant only while the two
+   * opacities stay complements of each other, and an eased pair drifts off
+   * complement in the middle. Over a window this short it matters more, not
+   * less — there is no time to recover from a thin frame.
+   */
+  animation-timing-function: linear;
   block-size: 100%;
+  /*
+   * `cover` crops rather than stretches, so mid-flight content zooms instead
+   * of rubber-banding, and the box is filled at every frame regardless of how
+   * far the card's aspect ratio has travelled.
+   *
+   * Anchored at the top because that is the edge a card keeps as it grows, so
+   * headers stay put while `cover` crops the overflow below them.
+   *
+   * `clip` is load-bearing, not tidiness: a replaced element is
+   * `overflow: visible` by default, and `cover` upscales the outgoing snapshot
+   * to a box on its way to roughly double the height. Without this the
+   * enlarged image paints across the sidebar and off the viewport.
+   */
   object-fit: cover;
   object-position: top;
+  overflow: clip;
 }
 
 /*
@@ -212,9 +257,19 @@ html[data-vt-swap] [data-widget][data-state="expanded"] {
   view-transition-name: expanded-slot !important;
 }
 
-/* The swapped pair does not move, so it has no geometry worth 240ms — the
-   whole swap reads at the fade's length. */
-::view-transition-group(expanded-slot) {
+/*
+ * The swapped pair does not move, so it has no geometry worth the full 420ms —
+ * the whole swap reads at the fade's length.
+ *
+ * And it opts back out of `--dur-vt-fade`. That token is short because a fade
+ * running alongside a growing box exposes the outgoing snapshot's stretch;
+ * with both panes parked in the same slot at the same size there is no stretch
+ * to outrun, and 90ms of cross-fade with no motion under it is a cut. This is
+ * the one pair that wants the longer fade.
+ */
+::view-transition-group(expanded-slot),
+::view-transition-old(expanded-slot),
+::view-transition-new(expanded-slot) {
   animation-duration: var(--dur-fast);
 }
 
