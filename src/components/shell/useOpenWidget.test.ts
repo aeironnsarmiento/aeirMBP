@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { assembleRegistry } from "@/lib/registry/assemble";
 import type { WidgetManifest } from "@/lib/registry/types";
 import { clearPendingTransitions, useOpenWidget } from "./useOpenWidget";
@@ -33,12 +33,37 @@ const REGISTRY = assembleRegistry([
   manifest({ id: "projects", hotkey: "p", order: 3 }),
 ]);
 
-function press(key: string, target: EventTarget = window) {
+function press(
+  key: string,
+  target: EventTarget = window,
+  init: KeyboardEventInit = {},
+) {
   act(() => {
     target.dispatchEvent(
-      new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+      new KeyboardEvent("keydown", {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      }),
     );
   });
+}
+
+/** Stubs the API and returns the spy, so a test can count transitions. */
+function stubViewTransition() {
+  clearPendingTransitions();
+  const startViewTransition = vi.fn((callback: () => void) => {
+    callback();
+    return { finished: Promise.resolve() };
+  });
+  Object.assign(document, { startViewTransition });
+  return startViewTransition;
+}
+
+function restoreViewTransition() {
+  Reflect.deleteProperty(document, "startViewTransition");
+  clearPendingTransitions();
 }
 
 describe("initial state (R4)", () => {
@@ -152,6 +177,110 @@ describe("hotkeys (R2)", () => {
     act(() => result.current.open("nonexistent"));
 
     expect(result.current.state.widgetId).toBe("about");
+  });
+});
+
+describe("held keys and no-op opens", () => {
+  // Cleanup belongs here rather than at the end of each test: a failing
+  // assertion throws first, and a trailing restore would leave the stub on
+  // `document` for every test after it.
+  afterEach(restoreViewTransition);
+
+  /*
+   * The OS fires one keydown, then repeats at roughly 30 a second until
+   * release. Every repeat used to reach `open`, and each one queued a full
+   * transition behind the last, so a two-second hold left the shell animating
+   * for half a minute.
+   */
+  const HELD = 20;
+
+  /*
+   * Transitions queue, so everything after the first is deferred to a
+   * microtask. Counting synchronously reports one call while twenty are still
+   * chained behind it — a green test over exactly the backlog being fixed.
+   */
+  async function drainQueue() {
+    await act(async () => {
+      for (let i = 0; i < HELD + 5; i += 1) await Promise.resolve();
+    });
+  }
+
+  it("plays one expansion for a held hotkey, not one per repeat", async () => {
+    const startViewTransition = stubViewTransition();
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+    startViewTransition.mockClear();
+
+    press("m");
+    for (let i = 0; i < HELD; i += 1) press("m", window, { repeat: true });
+    await drainQueue();
+
+    expect(startViewTransition).toHaveBeenCalledTimes(1);
+    expect(result.current.state.widgetId).toBe("music");
+  });
+
+  it("starts nothing when the held key names the widget already showing", () => {
+    const startViewTransition = stubViewTransition();
+    // About is `openByDefault`, so this is the case a reader hits by resting a
+    // finger on the key of the widget they are already looking at.
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+    startViewTransition.mockClear();
+
+    press("a");
+    for (let i = 0; i < HELD; i += 1) press("a", window, { repeat: true });
+
+    expect(startViewTransition).toHaveBeenCalledTimes(0);
+    expect(result.current.state.widgetId).toBe("about");
+  });
+
+  it("does not re-open the widget that is already expanded", () => {
+    const startViewTransition = stubViewTransition();
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+    startViewTransition.mockClear();
+
+    act(() => result.current.open("about"));
+
+    expect(startViewTransition).toHaveBeenCalledTimes(0);
+  });
+
+  it("still applies a sub-view change to the widget already expanded", async () => {
+    const startViewTransition = stubViewTransition();
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+
+    act(() => result.current.open("music"));
+    await drainQueue();
+    startViewTransition.mockClear();
+
+    // Same widget, different view — a real state change, so it is not a no-op
+    // and intra-widget navigation must keep working.
+    act(() => result.current.open("music", { subView: "artists" }));
+    await drainQueue();
+
+    expect(result.current.state.subView).toBe("artists");
+    expect(startViewTransition).toHaveBeenCalledTimes(1);
+  });
+
+  it("still applies params to the widget already expanded", () => {
+    const startViewTransition = stubViewTransition();
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+    startViewTransition.mockClear();
+
+    act(() => result.current.open("about", { params: { range: "year" } }));
+
+    expect(result.current.state.params).toEqual({ range: "year" });
+    expect(startViewTransition).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes once for a held escape", async () => {
+    const startViewTransition = stubViewTransition();
+    const { result } = renderHook(() => useOpenWidget(REGISTRY));
+    startViewTransition.mockClear();
+
+    press("Escape");
+    for (let i = 0; i < HELD; i += 1) press("Escape", window, { repeat: true });
+    await drainQueue();
+
+    expect(startViewTransition).toHaveBeenCalledTimes(1);
+    expect(result.current.state.widgetId).toBeNull();
   });
 });
 
@@ -470,14 +599,18 @@ describe("swap pairing (R5)", () => {
     teardown();
   });
 
-  it("does not mark re-opening the widget that is already expanded", () => {
+  it("starts no transition at all when re-opening the expanded widget", () => {
     clearPendingTransitions();
     const { seen } = stubTransition();
     const { result } = renderHook(() => useOpenWidget(REGISTRY));
 
     act(() => result.current.open("about"));
 
-    expect(seen).toEqual([false]);
+    // This used to run one unmarked morph, which was correct about the pairing
+    // and wrong about the motion: nothing moves, so there is nothing to
+    // animate. An empty list is the stronger guarantee — it cannot be marked
+    // as a swap because it never starts.
+    expect(seen).toEqual([]);
 
     teardown();
   });

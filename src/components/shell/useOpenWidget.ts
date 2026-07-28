@@ -172,6 +172,16 @@ export function commitWithTransition(
   });
 }
 
+/** Whether two param maps carry the same keys and values. */
+function sameParams(
+  current: Readonly<Record<string, string>>,
+  next: Readonly<Record<string, string>>,
+): boolean {
+  const keys = Object.keys(current);
+  if (keys.length !== Object.keys(next).length) return false;
+  return keys.every((key) => current[key] === next[key]);
+}
+
 /** Keys typed into a field are text, not shortcuts. */
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -204,6 +214,29 @@ export function useOpenWidget(registry: Registry): OpenWidgetApi {
       const manifest = findWidget(registry, id);
       if (!manifest) return;
 
+      const next: OpenWidgetState = {
+        widgetId: manifest.id,
+        subView: options.subView ?? defaultSubView(manifest),
+        params: options.params ?? {},
+      };
+
+      /*
+       * A request that lands on the state already showing is not a transition.
+       * It is a keypress naming where the reader already is, and animating it
+       * costs `--dur-slow` to arrive back where it started.
+       *
+       * The comparison is against the whole resulting state rather than the id
+       * alone, so pressing an open widget's own key still resets it to its
+       * default sub-view — that is a real change and keeps working.
+       */
+      if (
+        state.widgetId === next.widgetId &&
+        state.subView === next.subView &&
+        sameParams(state.params, next.params)
+      ) {
+        return;
+      }
+
       // Expanded → expanded is a swap: both panes hold the same grid cell, so
       // they pair into one stationary group instead of flying two morphs
       // across the grid. Dashboard → expanded keeps the growing morph.
@@ -214,17 +247,9 @@ export function useOpenWidget(registry: Registry): OpenWidgetApi {
 
       // Replacing the value rather than layering onto it is what stops two
       // widgets from being expanded when a hotkey is pressed while one is open.
-      commitWithTransition(
-        () =>
-          setState({
-            widgetId: manifest.id,
-            subView: options.subView ?? defaultSubView(manifest),
-            params: options.params ?? {},
-          }),
-        kind,
-      );
+      commitWithTransition(() => setState(next), kind);
     },
-    [registry, openWidgetId],
+    [registry, openWidgetId, state],
   );
 
   const close = useCallback(() => {
@@ -246,6 +271,16 @@ export function useOpenWidget(registry: Registry): OpenWidgetApi {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      /*
+       * Holding a key is one intent, not thirty. The OS repeats keydown at
+       * roughly 30 a second after its initial delay, and every repeat used to
+       * reach `open` and queue a full transition behind the last — a two-second
+       * hold left the shell animating for half a minute and the page
+       * unresponsive while it worked through the backlog.
+       *
+       * The queue itself is right; the flood was upstream of it.
+       */
+      if (event.repeat) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isTypingTarget(event.target)) return;
 
