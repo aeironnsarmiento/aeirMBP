@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { auditBlurLayers } from "@/components/glass/blurBudget";
@@ -11,6 +12,15 @@ import { Sidebar } from "./Sidebar";
 import { WidgetGrid } from "./WidgetGrid";
 import { closedStore, storeOpenOn } from "./testStore";
 import shellStyles from "./shell.module.css";
+
+/**
+ * Read a sibling source file for the assertions that inspect source text.
+ *
+ * Resolved against this file rather than the working directory: a
+ * cwd-relative path silently breaks the moment the directory moves.
+ */
+const readSibling = (name: string) =>
+  readFileSync(fileURLToPath(new URL(name, import.meta.url)), "utf8");
 
 const Icon = () => null;
 
@@ -154,7 +164,7 @@ describe("reflow below the desktop breakpoint (R6, R7)", () => {
   it("presents an expanded widget as a full-screen sheet below the breakpoint", () => {
     // jsdom evaluates no media queries and resolves no cascade, so the
     // stylesheet source is the only thing that can carry this assertion.
-    const source = readFileSync("components/shell/shell.module.css", "utf8");
+    const source = readSibling("shell.module.css");
     const breakpointBlock = source.slice(source.indexOf("@media (max-width: 899px)"));
 
     expect(breakpointBlock).toContain('.grid[data-expanded] .card[data-state="expanded"]');
@@ -170,14 +180,14 @@ describe("reflow below the desktop breakpoint (R6, R7)", () => {
     // jsdom performs no layout, so the declaration is the only assertion
     // available. Without it an auto row resolves a card's flex body from its
     // min-content and a busy summary spills over the card below it.
-    const source = readFileSync("components/shell/shell.module.css", "utf8");
+    const source = readSibling("shell.module.css");
     const dashboardRules = source.slice(0, source.indexOf(".grid[data-expanded]"));
 
     expect(dashboardRules).toContain("grid-auto-rows: max-content");
   });
 
   it("renders one tree at every width — no component reads the breakpoint", () => {
-    const source = readFileSync("components/shell/WidgetGrid.tsx", "utf8");
+    const source = readSibling("WidgetGrid.tsx");
 
     expect(source).not.toContain("matchMedia");
     expect(source).not.toContain("innerWidth");

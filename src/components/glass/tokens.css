@@ -87,6 +87,37 @@
   /* --- Motion ------------------------------------------------------------- */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /*
+   * For transforms large enough to watch. `--ease-out` is an easeOutQuint: it
+   * is 40% of the way through the distance at 10% of the time and 96% at the
+   * halfway point, which is what a 2px hover lift wants — the eye reads the
+   * end state, not the travel. Put a card's full expansion on that curve and
+   * the move is over before it registers, however long the duration, which
+   * reads as a pop rather than a movement.
+   *
+   * Material's standard curve spends the distance across the whole duration
+   * instead (3% / 13% / 37% / 78% at the same marks). Its emphasized curve was
+   * the other candidate and is the one Material names for large transforms,
+   * but it front-loads harder (16% / 50% / 69% / 88%), and here that trades
+   * against the cross-fade below: the sooner the box grows, the larger the
+   * outgoing snapshot has stretched by the time it fades out. Measured, that
+   * is 1.72x on emphasized against 1.48x on standard, so standard wins on the
+   * symptom this is tuned for.
+   */
+  --ease-transform: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /*
+   * The view transition's cross-fade, deliberately not `--dur-fast`.
+   *
+   * It is not tuned for legibility like every other duration here — it is
+   * tuned to be over before the outgoing snapshot has visibly grown. That
+   * snapshot is stretched to a group box on its way to roughly double the
+   * height, so however long it stays on screen is how long the old card
+   * appears to lunge forward. At 130ms it reaches 1.48x before it clears; at
+   * 90ms it is gone by about 1.15x, and the remaining ~80% of the growth is
+   * the clean resize the motion is actually about.
+   */
+  --dur-vt-fade: 90ms;
   --dur-fast: 130ms;
   --dur: 240ms;
   --dur-slow: 420ms;
