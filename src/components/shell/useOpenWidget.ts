@@ -45,16 +45,11 @@ type ViewTransitionDocument = Document & {
 /**
  * The transition currently running, or the tail of the queue behind it.
  *
- * Starting a view transition while one is in flight does not replace it — it
- * *aborts* it, and an aborted transition stops wherever it had got to. With
- * translucent surfaces that is not a subtle glitch: the snapshots freeze
- * part-faded and the wallpaper reads straight through the shell until
- * something else forces a repaint. It surfaces in the console as
- * `InvalidStateError: Transition was aborted because of invalid state`, which
- * names the mechanism but not the consequence.
- *
- * So transitions queue rather than interrupt. Pressing two hotkeys quickly
- * plays two expansions in order instead of one broken one.
+ * Starting a transition while one is in flight *aborts* it, and an aborted one
+ * stops wherever it had got to — with translucent surfaces the snapshots
+ * freeze part-faded and the wallpaper reads through until something forces a
+ * repaint. So transitions queue rather than interrupt, and two quick hotkeys
+ * play two expansions in order instead of one broken one.
  */
 let tail: Promise<void> | null = null;
 
@@ -80,32 +75,24 @@ function enqueue(run: () => Promise<void>): void {
 /**
  * How the shell wants a transition paired, not how fast it runs.
  *
- * A `morph` grows or shrinks one widget between its compact and expanded
- * boxes — the R5 signature motion, driven by the per-widget names the grid
- * writes inline. A `swap` replaces one expanded widget with another: both big
- * panes occupy the same grid cell, so pairing them into one stationary group
- * (see `[data-vt-swap]` in globals.css) cross-fades them in place. Left as two
- * morphs, a swap flies both translucent panes across the grid at once — the
- * outgoing pane vacates bare frame, the incoming one drags a zoomed ghost of
- * its compact self, and for the length of the flight the shell reads as
- * transparent wreckage rather than a machine changing mode.
+ * A `morph` grows or shrinks one widget between its compact and expanded boxes
+ * (R5). A `swap` replaces one expanded widget with another, and pairs both
+ * panes into one stationary group — see `[data-vt-swap]` in globals.css for
+ * why leaving it as two morphs reads as wreckage.
  */
 export type TransitionKind = "morph" | "swap";
 
 /**
  * Commits a layout-changing state update as one continuous motion (R5).
  *
- * The grid changes both its track counts and which cell each card occupies, so
- * interpolating `grid-template-columns` would snap rather than animate. A view
- * transition animates from a before/after snapshot instead, which handles an
+ * The grid changes track counts and cell assignments at once, so interpolating
+ * `grid-template-columns` would snap; a snapshot-driven transition handles an
  * arbitrary reflow with no measurement code.
  *
- * `flushSync` is required: the transition callback has to leave the DOM in its
- * final state synchronously, and React's own updates are not.
- *
- * Where the API is absent the state simply changes, which is the same
- * behaviour `prefers-reduced-motion` already asks for (R9) — so the degraded
- * path is a supported path rather than a fallback nobody exercises.
+ * `flushSync` is required — the callback must leave the DOM in its final state
+ * synchronously, and React's updates are not. Where the API is absent the
+ * state simply changes, which is what `prefers-reduced-motion` already asks
+ * for (R9), so the degraded path is a supported one.
  */
 export function commitWithTransition(
   update: () => void,
@@ -149,18 +136,11 @@ export function commitWithTransition(
     }
 
     /*
-     * Both promises get a handler, and both handlers ignore rejection.
-     *
-     * A skipped transition rejects them, and a skip is ordinary: the spec
-     * skips one outright whenever the document is hidden, so every expansion
-     * on a backgrounded tab takes this path. Left unhandled it surfaced as
-     * `unhandledRejection: InvalidStateError: Transition was aborted because
-     * of invalid state` — a real console error for a non-event, which is
-     * exactly the kind of noise that trains an owner to ignore the console.
-     *
-     * The state change itself is never at risk. `flushSync` has already
-     * committed it inside the callback; a skip costs the animation, nothing
-     * more.
+     * Both promises get a handler that ignores rejection. A skip rejects them
+     * and a skip is ordinary — the spec skips outright on a hidden document,
+     * so every expansion on a backgrounded tab lands here. Unhandled it was a
+     * console error for a non-event. The state change is never at risk:
+     * `flushSync` already committed it, so a skip costs only the animation.
      */
     Promise.resolve(transition?.ready).catch(() => {});
 
@@ -221,13 +201,10 @@ export function useOpenWidget(registry: Registry): OpenWidgetApi {
       };
 
       /*
-       * A request that lands on the state already showing is not a transition.
-       * It is a keypress naming where the reader already is, and animating it
-       * costs `--dur-slow` to arrive back where it started.
-       *
-       * The comparison is against the whole resulting state rather than the id
-       * alone, so pressing an open widget's own key still resets it to its
-       * default sub-view — that is a real change and keeps working.
+       * A request landing on the state already showing is not a transition —
+       * animating it costs `--dur-slow` to arrive back where it started.
+       * Compared against the whole resulting state rather than the id alone,
+       * so pressing an open widget's key still resets its sub-view.
        */
       if (
         state.widgetId === next.widgetId &&
@@ -273,12 +250,9 @@ export function useOpenWidget(registry: Registry): OpenWidgetApi {
     function onKeyDown(event: KeyboardEvent) {
       /*
        * Holding a key is one intent, not thirty. The OS repeats keydown at
-       * roughly 30 a second after its initial delay, and every repeat used to
-       * reach `open` and queue a full transition behind the last — a two-second
-       * hold left the shell animating for half a minute and the page
-       * unresponsive while it worked through the backlog.
-       *
-       * The queue itself is right; the flood was upstream of it.
+       * roughly 30 a second, and every repeat used to queue a full transition
+       * behind the last — a two-second hold left the shell animating for half
+       * a minute. The queue is right; the flood was upstream of it.
        */
       if (event.repeat) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;

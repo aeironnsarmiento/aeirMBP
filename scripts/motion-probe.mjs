@@ -1,5 +1,5 @@
 /**
- * Cross-engine probe for the shell's expansion motion.
+ * Cross-engine probe for the shell's expansion motion and focus ring.
  *
  * Emits one JSON object on stdout: per engine, per interaction, the geometry
  * and blending of every view-transition group sampled *while the transition is
@@ -9,14 +9,12 @@
  * Run: node scripts/motion-probe.mjs [--port P] [--engines a,b] [--headed] [--out DIR]
  * Requires a production build (`npm run build`).
  *
- * Why this script exists: four consecutive fixes to the transparency defect
- * passed verification and were all still broken in a real browser. Every one of
- * them was checked either after `finished` resolved — when the settled state
- * always looks correct — or in a tab reporting `document.hidden`, where the
- * spec skips the transition outright and there is nothing to see. This probe
- * asserts the document is visible, samples strictly inside `ready`, and fails
- * loudly when it finds no view-transition animations at all. A silent zero is
- * the failure mode it exists to prevent.
+ * Four consecutive fixes to the transparency defect passed verification and
+ * were all still broken in a real browser — each checked either after
+ * `finished` resolved, when the settled state always looks correct, or in a
+ * tab reporting `document.hidden`, where the spec skips the transition and
+ * there is nothing to see. So this asserts the document is visible, samples
+ * strictly inside `ready`, and exits non-zero on zero animations.
  */
 
 import { spawn } from "node:child_process";
@@ -84,12 +82,10 @@ const INSTRUMENT = () => {
   w.__probe = { transition: null, oldRects: null, newRects: null };
 
   /*
-   * A snapshot's intrinsic size is the element's border box at capture time,
-   * and nothing exposes it afterwards. Recording the rects at the two capture
-   * moments is the only way to know how much of a group box each image
-   * actually paints — which is the whole question, since `block-size: 100%`
-   * makes both pseudo *elements* fill the group box whether their images do or
-   * not.
+   * A snapshot's intrinsic size is its element's border box at capture time,
+   * and nothing exposes it afterwards. Recording rects at the two capture
+   * moments is the only way to know how much of a group box each image paints
+   * — `block-size: 100%` makes both pseudo *elements* fill it regardless.
    */
   const nameRects = () => {
     const out = {};
@@ -255,15 +251,10 @@ async function sampleTransition(page, label) {
         }
 
         /*
-         * The number the whole investigation turns on: the lowest total
-         * coverage anywhere inside this group box, as a fraction of the
-         * surface's settled alpha.
-         *
-         * plus-lighter adds both sides, so a region both images paint sums to
-         * 1.0 and the surface reads exactly as designed. A region only one
-         * image reaches contributes that side's opacity alone, and the
-         * wallpaper comes through the difference. A single-sided group has no
-         * partner at any point, so its floor is its one side's opacity.
+         * The number this turns on: lowest total coverage anywhere in the
+         * group box. plus-lighter adds both sides, so a region both images
+         * paint sums to 1.0; a region only one reaches contributes that side's
+         * opacity alone and the wallpaper comes through the difference.
          */
         const contributions = [];
         if (entry.has_old) contributions.push(entry.old_opacity ?? 0);
@@ -284,13 +275,10 @@ async function sampleTransition(page, label) {
           .toFixed(3);
         entry.single_sided = !(entry.has_old && entry.has_new);
         /*
-         * Single-sided groups are excluded. A card that genuinely appears or
-         * disappears has no partner by definition, and fading it in from
-         * nothing is the intended motion rather than a coverage defect. Only a
-         * pair that *should* hold constant coverage and does not is a bug.
-         *
-         * 0.99 rather than 1.0 because opacity is sampled from a running
-         * animation, and an exact float compare would flag rounding.
+         * Single-sided groups excluded: a card that genuinely appears has no
+         * partner, and fading in from nothing is the intended motion. 0.99
+         * rather than 1.0 because opacity is sampled from a running animation
+         * and an exact compare would flag rounding.
          */
         entry.thins = !entry.single_sided && entry.min_coverage < 0.99;
         return entry;
@@ -324,10 +312,9 @@ async function releaseTransition(page) {
 }
 
 /*
- * Three interactions, because the defect does not present the same way in each.
- * A swap pairs both expanded panes into one stationary group; a collapse and an
- * expand are morphs whose boxes change shape, which is where snapshot sizing
- * decides whether coverage holds.
+ * Three, because the defect does not present the same way in each. A swap
+ * pairs both panes into one stationary group; collapse and expand are morphs
+ * whose boxes change shape, where snapshot sizing decides coverage.
  */
 const INTERACTIONS = [
   {
@@ -422,12 +409,10 @@ async function checkFocusRing(page) {
   }
 
   /*
-   * The tab walk is the realistic check but it depends on the engine actually
-   * advancing focus, and Playwright's Firefox parks on the first link and
-   * never moves. This exercises the same cascade rule without that dependency:
-   * a keypress establishes keyboard modality, and a card focused while that
-   * modality is active is exactly the state `:focus-visible` is defined to
-   * match.
+   * The tab walk depends on the engine advancing focus, and Playwright's
+   * Firefox parks on the first link. This exercises the same cascade rule
+   * without that dependency: a keypress establishes keyboard modality, and a
+   * card focused under it is what `:focus-visible` is defined to match.
    */
   await page.keyboard.press("Escape");
   await page.waitForTimeout(700);
@@ -468,14 +453,9 @@ async function probeEngine(playwright, engine) {
   try {
     browser = await launcher.launch({
       headless: !HEADED,
-      /*
-       * Firefox on macOS restricts Tab to links and form fields unless full
-       * keyboard access is on, so the tab walk below cycles among anchors and
-       * never reaches a widget card. `7` is the all-elements value, which is
-       * what a reader with full keyboard access actually has — without it the
-       * focus-ring check silently reports nothing in one of the two engines
-       * the fix is gated on.
-       */
+      // Firefox on macOS restricts Tab to links unless full keyboard access
+      // is on; `7` is the all-elements value. (Does not fully take in
+      // headless — see `tab_walk_stalled` in the output.)
       ...(engine === "firefox"
         ? { firefoxUserPrefs: { "accessibility.tabfocus": 7 } }
         : {}),
@@ -518,11 +498,10 @@ async function probeEngine(playwright, engine) {
     await page.addStyleTag({ content: SLOWDOWN_CSS });
 
     /*
-     * The reference for the one thing numbers cannot answer: whether the frame
-     * still renders its backdrop filter once it is lifted into its own
-     * snapshot. Geometry and opacity both look perfect on a frame that has
-     * silently lost its blur, so the settled frame is captured here and every
-     * mid-flight shot below is read against it.
+     * The one thing numbers cannot answer: whether the frame still renders its
+     * backdrop filter once lifted into its own snapshot. Geometry and opacity
+     * look perfect on a frame that silently lost its blur, so mid-flight shots
+     * are read against this settled reference.
      */
     const settled = join(OUT, `${engine}-settled.png`);
     await page.screenshot({ path: settled });
