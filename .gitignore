@@ -5,6 +5,7 @@ out/
 build/
 coverage/
 .motion-probe/
+.claude/
 docs/
 CLAUDE.md
 CONCEPTS.md
