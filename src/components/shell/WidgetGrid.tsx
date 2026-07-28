@@ -64,14 +64,38 @@ export function WidgetGrid({
   const previousOpenId = useRef<string | null>(openId);
 
   useEffect(() => {
-    const collapsed = previousOpenId.current;
+    const previous = previousOpenId.current;
     previousOpenId.current = openId;
+
+    /*
+     * Nothing changed hands — a first render, or a re-render for some other
+     * reason. Moving focus here would pull it into whichever widget is open by
+     * default on every visit, before the reader has touched anything.
+     */
+    if (previous === openId) return;
 
     // Focus goes back to the card that was open, which is the card the reader
     // was last looking at (R7). The modal used to own this.
-    if (openId === null && collapsed !== null) {
-      cards.current.get(collapsed)?.focus({ preventScroll: true });
+    if (openId === null) {
+      if (previous !== null) {
+        cards.current.get(previous)?.focus({ preventScroll: true });
+      }
+      return;
     }
+
+    /*
+     * And forward to the widget that just expanded, which is the mirror of the
+     * same rule: attention is on the thing that grew.
+     *
+     * This is also what settles the stale-focus ring. A card clicked with a
+     * pointer keeps focus without drawing one, and the browser re-qualifies
+     * that focus as keyboard focus on the next keypress — so pressing any
+     * hotkey lit up a ring on a card nobody had navigated to. Focus no longer
+     * sits there to be re-qualified. The expanded region is `tabIndex={-1}`,
+     * and the ring rule is scoped to `[tabindex="0"]`, so landing here draws
+     * nothing.
+     */
+    cards.current.get(openId)?.focus({ preventScroll: true });
   }, [openId]);
 
   // The expanded card spans one row per sibling, so the compressed column

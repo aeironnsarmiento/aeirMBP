@@ -142,6 +142,52 @@ describe("dismissal and focus (R7)", () => {
     expect(document.body).toHaveFocus();
   });
 
+  /*
+   * Focus follows the expansion for the same reason it returns on collapse:
+   * the reader's attention is on the widget that just became prominent, and
+   * assistive technology should land there rather than wherever the pointer
+   * happened to leave it.
+   *
+   * It also settles the stale-focus ring. A card clicked with a pointer keeps
+   * focus without drawing a ring, and the browser re-qualifies that focus as
+   * keyboard focus the moment any key is pressed — so an unrelated hotkey made
+   * a ring appear on a card nobody had navigated to. Moving focus off it means
+   * there is nothing stale left to re-qualify.
+   */
+  it("moves focus into the widget that expands", () => {
+    const { rerender } = render(
+      withSite(<WidgetGrid registry={REGISTRY} store={closedStore()} />),
+    );
+
+    rerender(
+      withSite(<WidgetGrid registry={REGISTRY} store={storeOpenOn("music")} />),
+    );
+
+    expect(screen.getByRole("region", { name: "Music" })).toHaveFocus();
+  });
+
+  it("moves focus with the widget when one expansion replaces another", () => {
+    const { rerender } = render(
+      withSite(<WidgetGrid registry={REGISTRY} store={storeOpenOn("music")} />),
+    );
+
+    rerender(
+      withSite(<WidgetGrid registry={REGISTRY} store={storeOpenOn("about")} />),
+    );
+
+    expect(screen.getByRole("region", { name: "About" })).toHaveFocus();
+  });
+
+  it("does not steal focus for the widget that is already open on first render", () => {
+    // A widget is expanded on load, so without this guard every visit would
+    // pull focus into it before the reader has done anything.
+    render(
+      withSite(<WidgetGrid registry={REGISTRY} store={storeOpenOn("music")} />),
+    );
+
+    expect(document.body).toHaveFocus();
+  });
+
   it("offers a collapse control that reports the expanded state", async () => {
     const user = userEvent.setup();
     const close = vi.fn();

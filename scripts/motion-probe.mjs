@@ -350,13 +350,136 @@ const INTERACTIONS = [
   },
 ];
 
+/**
+ * Whether the focus ring appears when the reader navigated by keyboard, and
+ * stays away when they did not.
+ *
+ * jsdom runs no cascade, so `:focus-visible` cannot be asserted in the unit
+ * suite at all — this is the only place the rule is actually exercised.
+ */
+async function checkFocusRing(page) {
+  const ringHere = () =>
+    page.evaluate(() => {
+      const element = document.activeElement;
+      if (!element || element === document.body) return { focused: null };
+      const style = getComputedStyle(element);
+      return {
+        focused:
+          element.getAttribute("data-widget") ??
+          element.getAttribute("aria-label") ??
+          element.tagName.toLowerCase(),
+        tabindex: element.getAttribute("tabindex"),
+        outline: `${style.outlineStyle} ${style.outlineWidth}`,
+      };
+    });
+
+  // Pointer first, then an unrelated hotkey. This is the reported sequence:
+  // the click focuses a card without a ring, and the keypress used to
+  // re-qualify that focus as keyboard focus and light it up.
+  await page.click('[data-widget="music"][data-state="compact"]');
+  await page.waitForTimeout(700);
+  await page.keyboard.press("p");
+  await page.waitForTimeout(700);
+  const afterPointerThenHotkey = await ringHere();
+  const clickedCardRing = await page.evaluate(() => {
+    const card = document.querySelector('[data-widget="music"]');
+    const style = getComputedStyle(card);
+    return {
+      is_focused: document.activeElement === card,
+      outline: `${style.outlineStyle} ${style.outlineWidth}`,
+    };
+  });
+
+  // Keyboard navigation must still be visible; suppressing the ring outright
+  // would trade one defect for a worse one.
+  let afterTab = null;
+  // Recorded rather than discarded: a null result has two very different
+  // causes — no ring on a card that was reached, or a harness whose Tab never
+  // reaches a card at all — and only the walk distinguishes them.
+  const tabWalk = [];
+  for (let i = 0; i < 30; i += 1) {
+    await page.keyboard.press("Tab");
+    const here = await page.evaluate(() => {
+      const element = document.activeElement;
+      if (!element || element === document.body) return { at: "body" };
+      const style = getComputedStyle(element);
+      const label =
+        element.getAttribute("data-widget") ??
+        element.getAttribute("aria-label") ??
+        element.textContent?.trim().slice(0, 18) ??
+        "";
+      return {
+        at: `${element.tagName.toLowerCase()}:${label || "?"}`,
+        is_card: element.matches('[data-widget][tabindex="0"]'),
+        outline: `${style.outlineStyle} ${style.outlineWidth}`,
+      };
+    });
+    tabWalk.push(here.at);
+    if (here.is_card) {
+      afterTab = { widget: here.at, outline: here.outline };
+      break;
+    }
+  }
+
+  /*
+   * The tab walk is the realistic check but it depends on the engine actually
+   * advancing focus, and Playwright's Firefox parks on the first link and
+   * never moves. This exercises the same cascade rule without that dependency:
+   * a keypress establishes keyboard modality, and a card focused while that
+   * modality is active is exactly the state `:focus-visible` is defined to
+   * match.
+   */
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(700);
+  const modalityRing = await page.evaluate(() => {
+    const card = document.querySelector('[data-widget="about"][tabindex="0"]');
+    if (!card) return { error: "no compact card to focus" };
+    card.focus();
+    const style = getComputedStyle(card);
+    return {
+      matches_focus_visible: card.matches(":focus-visible"),
+      outline: `${style.outlineStyle} ${style.outlineWidth}`,
+    };
+  });
+
+  return {
+    focus_after_pointer_then_hotkey: afterPointerThenHotkey,
+    clicked_card: clickedCardRing,
+    tab_walk: tabWalk,
+    tab_walk_stalled:
+      tabWalk.length > 3 && new Set(tabWalk.slice(1)).size === 1,
+    keyboard_modality_ring: modalityRing,
+    tabbed_card: afterTab,
+    ring_suppressed_after_pointer:
+      clickedCardRing.outline.startsWith("none") ||
+      clickedCardRing.outline.endsWith("0px"),
+    ring_shown_after_tab: Boolean(
+      afterTab && !afterTab.outline.startsWith("none") &&
+        !afterTab.outline.endsWith("0px"),
+    ),
+  };
+}
+
 async function probeEngine(playwright, engine) {
   const launcher = playwright[engine];
   if (!launcher) return { engine, error: `unknown engine "${engine}"` };
 
   let browser;
   try {
-    browser = await launcher.launch({ headless: !HEADED });
+    browser = await launcher.launch({
+      headless: !HEADED,
+      /*
+       * Firefox on macOS restricts Tab to links and form fields unless full
+       * keyboard access is on, so the tab walk below cycles among anchors and
+       * never reaches a widget card. `7` is the all-elements value, which is
+       * what a reader with full keyboard access actually has — without it the
+       * focus-ring check silently reports nothing in one of the two engines
+       * the fix is gated on.
+       */
+      ...(engine === "firefox"
+        ? { firefoxUserPrefs: { "accessibility.tabfocus": 7 } }
+        : {}),
+    });
   } catch (error) {
     return { engine, error: `launch failed: ${error.message}` };
   }
@@ -417,7 +540,16 @@ async function probeEngine(playwright, engine) {
       await releaseTransition(page);
     }
 
-    return { engine, visibility, interactions };
+    /*
+     * Last, and after a fresh navigation. The focus checks need real timings
+     * and the slowdown above does not survive a reload, so this is cheaper
+     * than unwinding it and resetting which widget is open.
+     */
+    await page.goto(ORIGIN, { waitUntil: "load" });
+    await page.waitForTimeout(2500);
+    const focus = await checkFocusRing(page);
+
+    return { engine, visibility, interactions, focus };
   } catch (error) {
     return { engine, error: error.message };
   } finally {

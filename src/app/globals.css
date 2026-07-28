@@ -76,11 +76,34 @@ a {
   text-underline-offset: 3px;
 }
 
+/*
+ * `[tabindex="0"]`, not `[tabindex]`: the second also matches `-1`, which is
+ * how an element is made focusable *programmatically* rather than reachable by
+ * tab. The expanded widget region is one of those — focus moves there when a
+ * widget opens — and it should receive focus without announcing itself with a
+ * ring the reader did not navigate to.
+ */
 a:focus-visible,
 button:focus-visible,
-[tabindex]:focus-visible {
+[tabindex="0"]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/*
+ * `-1` means the element is focusable only by script, so focus arrived there
+ * because the page moved it — never because the reader navigated to it. A ring
+ * is a navigation indicator, and drawing one for a move the reader did not
+ * make points at the wrong thing.
+ *
+ * Scoping the rule above was not enough on its own: with our ring gone the
+ * user agent's own `outline: auto` still applied, and Chromium and WebKit both
+ * drew one around the expanded widget the moment focus followed the expansion
+ * into it. Firefox drew nothing, which is why this needs saying explicitly
+ * rather than being left to the UA.
+ */
+[tabindex="-1"]:focus-visible {
+  outline: none;
 }
 
 .mono {
