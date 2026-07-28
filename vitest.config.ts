@@ -6,13 +6,13 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL(".", import.meta.url)),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   test: {
     globals: true,
     environment: "jsdom",
-    setupFiles: ["./test/setup.ts"],
+    setupFiles: ["./src/test/setup.ts"],
     include: ["**/*.test.{ts,tsx}"],
     exclude: ["node_modules/**", ".next/**"],
   },

@@ -1,0 +1,251 @@
+@import "../components/glass/tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100%;
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: oklch(0.93 0.01 250);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* The body never scrolls sideways at any width (R7 verification). */
+  overflow-x: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: oklch(0.18 0.02 260);
+  }
+}
+
+:root[data-theme="light"] body {
+  background: oklch(0.93 0.01 250);
+}
+
+:root[data-theme="dark"] body {
+  background: oklch(0.18 0.02 260);
+}
+
+img,
+svg,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+a {
+  color: inherit;
+  text-decoration-color: color-mix(in oklch, currentColor 35%, transparent);
+  text-underline-offset: 3px;
+}
+
+/*
+ * `[tabindex="0"]`, not `[tabindex]`: the latter also matches `-1`, which is
+ * script-only focus. The expanded widget region is one of those — focus moves
+ * there when a widget opens — and a ring is a navigation indicator, so drawing
+ * one for a move the reader did not make points at the wrong thing.
+ *
+ * Suppressing `-1` explicitly is required rather than redundant: with our rule
+ * scoped off it, the UA's own `outline: auto` still drew a ring in Chromium and
+ * WebKit (Firefox drew none).
+ */
+a:focus-visible,
+button:focus-visible,
+[tabindex="0"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
+.mono {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Widget expansion motion (R5, R9) ------------------------------------- */
+
+/*
+ * Document-level pseudo-elements, so they live in the global sheet rather than
+ * a module. The grid changes track counts and cell assignments at once, which
+ * is why the motion comes from a view transition rather than an interpolated
+ * grid template.
+ *
+ * `--dur-slow`, not `--dur`: duration scales with distance travelled, and a
+ * card expanding is a few hundred pixels (measured 334px to 649px tall), which
+ * read as a snap at 240ms. 420ms sits inside Material's and Apple's published
+ * ranges for a transition this size and stays under the ~500ms mark where a
+ * transition stops covering latency and starts adding it.
+ */
+::view-transition-group(*) {
+  animation-duration: var(--dur-slow);
+  animation-timing-function: var(--ease-transform);
+}
+
+/*
+ * Never override the UA's `mix-blend-mode: plus-lighter`, and never set
+ * `opacity` here. plus-lighter adds both snapshots' contributions, so a pair
+ * fading 1→0 against 0→1 holds constant coverage — the only blend mode under
+ * which cross-fading *translucent* surfaces does not thin. Every surface here
+ * is a translucent pane, so this is load-bearing.
+ *
+ * Its guarantee holds only where both images paint, and the UA's
+ * `block-size: auto` breaks that overlap whenever a card changes shape. The
+ * four declarations below restore it and are a set — dropping `cover` to avoid
+ * its upscale opens regions that NEITHER image covers (measured: a 245.6x320.8
+ * box holding a 232x318 old image and a 307.3x185.9 new one, coverage zero
+ * below y=185.9), and `clip` is what bounds that upscale.
+ *
+ * Four prior attempts and their measurements:
+ * docs/solutions/ui-bugs/overriding-view-transition-blend-mode-thins-translucent-surfaces.md
+ * docs/solutions/ui-bugs/view-transition-snapshot-geometry-mismatch-thins-panes.md
+ */
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: var(--dur-vt-fade);
+  /* Linear: coverage stays constant only while the two opacities remain
+     complements, and an eased pair drifts off complement in the middle. */
+  animation-timing-function: linear;
+  block-size: 100%;
+  /* Top-anchored because that is the edge a card keeps as it grows.
+     Mid-flight content zooms under `cover`; that is the accepted cost. */
+  object-fit: cover;
+  object-position: top;
+  overflow: clip;
+}
+
+/*
+ * Reduced motion is CSS policy, not a JavaScript branch, so there is one place
+ * that decides whether the site animates. The transition still runs and the
+ * layout still changes — it simply arrives immediately.
+ */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/*
+ * Two shell regions claim their own group.
+ *
+ * The frame, so its coverage stops depending on anything else being right.
+ * Unnamed it rides the root snapshot, whose correctness is an argument rather
+ * than a guarantee; named, its box is identical on both sides because it never
+ * resizes, leaving `A·(1−t) + A·t = A` with nothing to reason about.
+ *
+ * The sidebar, because a snapshot paints in the top layer. Unnamed it stays in
+ * the page snapshot beneath every widget group, and a collapsing widget sweeps
+ * across it for the length of the animation.
+ *
+ * Declared here rather than in the shell's CSS module: modules hash
+ * `view-transition-name`, so no `::view-transition-group()` rule would match.
+ */
+[data-shell="frame"] {
+  view-transition-name: shell-frame;
+}
+
+[data-shell="sidebar"] {
+  view-transition-name: shell-sidebar;
+}
+
+::view-transition-group(shell-sidebar) {
+  z-index: 20;
+}
+
+/*
+ * A swap — one expanded widget replacing another — pairs both big panes into a
+ * single stationary group instead of two cross-grid morphs. The shell holds
+ * `data-vt-swap` on <html> for exactly the transition's lifetime
+ * (useOpenWidget.commitWithTransition), and this renames whichever card is
+ * expanded on each side of the capture to one slot: same name, same cell, so
+ * the pair cross-fades in place and nothing travels. Left as two morphs, both
+ * translucent panes fly across the grid and the shell reads as wreckage.
+ *
+ * `!important` because the grid names every card inline (`widget-*`), and the
+ * rename must win over that for both captures.
+ */
+html[data-vt-swap] [data-widget][data-state="expanded"] {
+  view-transition-name: expanded-slot !important;
+}
+
+/*
+ * The swapped pair does not move, so it has no geometry worth the full 420ms.
+ * It also opts back out of `--dur-vt-fade`: that token is short to outrun a
+ * growing box's stretch, and with both panes parked at the same size there is
+ * no stretch to outrun — 90ms with no motion under it reads as a cut.
+ */
+::view-transition-group(expanded-slot),
+::view-transition-old(expanded-slot),
+::view-transition-new(expanded-slot) {
+  animation-duration: var(--dur-fast);
+}
+
+/* --- Touch scrolling ------------------------------------------------------ */
+
+/*
+ * No scrollbars on a phone. Touch surfaces scroll by gesture and the bar is
+ * chrome over content the whole way down. Scrolling itself is untouched — this
+ * hides the indicator, it does not disable the overflow.
+ */
+@media (max-width: 899px) {
+  * {
+    scrollbar-width: none;
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Visually hidden but reachable by assistive technology. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

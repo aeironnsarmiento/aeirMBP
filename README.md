@@ -16,23 +16,35 @@ Vitest (+ PGlite for real SQL tests) · plain CSS with custom properties.
 ## Layout
 
 ```text
-app/              routes; api/* are thin mounts over widget handlers
-components/
-  glass/          GlassSurface, GlassModal, theme tokens, blur budget
-  shell/          TopBar, Sidebar, WidgetGrid, ModalHost, open-widget store
-lib/
-  auth/           owner session cookie and guards
-  db/             Drizzle client and schema
-  registry/       manifest contract and registry assembly
-  site/           site_setting query layer, avatar storage
-  theme/          committed background set
-widgets/
-  about/  music/  projects/  settings/
+src/
+  app/            routes; api/* are thin mounts over widget handlers
+  proxy.ts        edge auth guard over every owner-only API path
+  components/
+    glass/        GlassSurface, GlassModal, theme tokens, blur budget
+    media/        ImageCropper and its crop geometry
+    shell/        TopBar, Sidebar, WidgetGrid, ModalHost, open-widget store
+  lib/
+    auth/         owner session cookie and guards
+    db/           Drizzle client and schema
+    images/       provider CDN cover-art sizing
+    media/        animated wallpaper transcoding
+    registry/     manifest contract and registry assembly
+    site/         site_setting query layer, avatar storage
+    theme/        background presets and appearance resolution
+  widgets/
+    about/  music/  projects/  settings/
+  test/           Vitest setup and the PGlite harness
+drizzle/          generated migrations
+public/           the committed background images themselves
+scripts/          db-audit and perf-measure, run by hand
 ```
+
+Everything importable lives under `src/`, which the `@/*` alias points at; the
+root holds only configuration, generated migrations, static assets and scripts.
 
 Each widget owns its manifest, compact view, expanded view, server handlers and
 query layer. The shell owns glass, layout, theming, auth and mounting. Adding a
-fifth widget is one directory plus one line in `lib/registry/index.ts`.
+fifth widget is one directory plus one line in `src/lib/registry/index.ts`.
 
 ## Setup
 
@@ -48,7 +60,7 @@ npm run dev
 
 `public` is reachable through Supabase's PostgREST by anyone holding the anon
 key, and that key ships to browsers. Nothing in this app goes through PostgREST
-— `lib/db/client.ts` connects as `postgres` over a direct socket — so every
+— `src/lib/db/client.ts` connects as `postgres` over a direct socket — so every
 table has RLS enabled with no policy, and `anon` and `authenticated` hold no
 grants. That combination denies PostgREST outright while leaving the app
 untouched, because `postgres` carries `rolbypassrls`.
