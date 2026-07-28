@@ -394,6 +394,16 @@ async function probeEngine(playwright, engine) {
 
     await page.addStyleTag({ content: SLOWDOWN_CSS });
 
+    /*
+     * The reference for the one thing numbers cannot answer: whether the frame
+     * still renders its backdrop filter once it is lifted into its own
+     * snapshot. Geometry and opacity both look perfect on a frame that has
+     * silently lost its blur, so the settled frame is captured here and every
+     * mid-flight shot below is read against it.
+     */
+    const settled = join(OUT, `${engine}-settled.png`);
+    await page.screenshot({ path: settled });
+
     const interactions = [];
     for (const interaction of INTERACTIONS) {
       await interaction.run(page);

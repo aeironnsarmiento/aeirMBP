@@ -226,6 +226,23 @@ button:focus-visible,
  * `view-transition-name` the same way they scope class names, so a name
  * written there is hashed and no `::view-transition-group()` rule can match it.
  */
+/*
+ * The frame is named so its coverage stops depending on anything else being
+ * right.
+ *
+ * Unnamed, it rides the root snapshot, and root's correctness is an argument
+ * rather than a guarantee: it holds only while every lifted-out element leaves
+ * a hole the group above it fills exactly. Named, the frame is its own pair,
+ * its box is identical on both sides because the frame never changes size, and
+ * the blend maths is `A·(1−t) + A·t = A` with nothing left to reason about.
+ *
+ * Declared here rather than in the shell's CSS module for the same reason as
+ * the sidebar above: modules hash `view-transition-name`.
+ */
+[data-shell="frame"] {
+  view-transition-name: shell-frame;
+}
+
 [data-shell="sidebar"] {
   view-transition-name: shell-sidebar;
 }

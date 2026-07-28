@@ -102,6 +102,7 @@ export function Shell({
         <GlassSurface
           as="div"
           className={styles.shell}
+          data-shell="frame"
           radius="var(--radius-xl)"
         >
           <TopBar nowPlaying={nowPlaying} />
