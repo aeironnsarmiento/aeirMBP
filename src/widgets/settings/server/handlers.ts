@@ -1,8 +1,12 @@
 import { requireOwner } from "@/lib/auth/guard";
 import {
+  APPEARANCES,
+  BACKGROUND_SLOT_FIELDS,
+  BACKGROUND_SLOT_PATH_FIELDS,
   SettingsValidationError,
   readSiteSettings,
   writeSiteSettings,
+  type Appearance,
   type SiteSettings,
 } from "@/lib/site/settings";
 import {
@@ -17,6 +21,7 @@ import {
 import {
   CUSTOM_BACKGROUND_ID,
   DEFAULT_BACKGROUND_ID,
+  backgroundKind,
 } from "@/lib/theme/backgrounds";
 import { readBackfillProgress } from "@/widgets/music/server/backfill";
 
@@ -36,7 +41,50 @@ const EDITABLE_FIELDS = [
   "backgroundId",
   "frameOpacity",
   "paneOpacity",
+  // An unlisted field is dropped before validation ever sees it.
+  "backgroundLightId",
+  "backgroundDarkId",
+  "themeSwitchoverAt",
+  "themeSwitchoverTo",
 ] as const;
+
+/** Absent means the single background — what every request meant before the
+ *  pair existed, so both upload paths stay one code path. */
+function slotOf(request: Request): Appearance | null {
+  const slot = new URL(request.url).searchParams.get("slot");
+  return slot === "light" || slot === "dark" ? slot : null;
+}
+
+/** Presets are all stills, so only an upload can be a video. */
+function slotMediaKind(
+  id: string | null,
+  path: string | null,
+): "image" | "video" | null {
+  if (id === null) return null;
+  if (id !== CUSTOM_BACKGROUND_ID) return "image";
+  return path ? backgroundKind(path) : null;
+}
+
+/**
+ * Refuses a video in either half of a pair (R8): a pair swaps by custom
+ * property, and a property cannot swap a `<video>` for a `<div>` — including
+ * two videos. Judged against the merged state, since assigning one slot only
+ * makes sense against what the other holds.
+ */
+function checkPairMediaKinds(next: SiteSettings): void {
+  for (const appearance of APPEARANCES) {
+    const kind = slotMediaKind(
+      next[BACKGROUND_SLOT_FIELDS[appearance]],
+      next[BACKGROUND_SLOT_PATH_FIELDS[appearance]],
+    );
+    if (kind !== "video") continue;
+
+    throw new SettingsValidationError(
+      BACKGROUND_SLOT_FIELDS[appearance],
+      "A background pair must be two still images. An animated background can only be used as a single background for both appearances.",
+    );
+  }
+}
 
 /**
  * Grants permission to upload a background, without the bytes passing through
@@ -94,10 +142,22 @@ export async function handleUploadConfirm(request: Request): Promise<Response> {
       );
     }
 
-    const settings = await writeSiteSettings({
-      backgroundPath: body.path,
-      backgroundId: CUSTOM_BACKGROUND_ID,
-    });
+    const slot = slotOf(request);
+
+    // Both fields in one patch: the write layer is transactional per patch.
+    const patch: Partial<SiteSettings> =
+      slot === null
+        ? { backgroundPath: body.path, backgroundId: CUSTOM_BACKGROUND_ID }
+        : {
+            [BACKGROUND_SLOT_PATH_FIELDS[slot]]: body.path,
+            [BACKGROUND_SLOT_FIELDS[slot]]: CUSTOM_BACKGROUND_ID,
+          };
+
+    if (slot !== null) {
+      checkPairMediaKinds({ ...(await readSiteSettings()), ...patch });
+    }
+
+    const settings = await writeSiteSettings(patch);
 
     return Response.json(settings, { headers: { "cache-control": "no-store" } });
   } catch (error) {
@@ -105,32 +165,57 @@ export async function handleUploadConfirm(request: Request): Promise<Response> {
   }
 }
 
+/** Every stored background path a settings state still points at. */
+function referencedBackgroundPaths(settings: SiteSettings): string[] {
+  return [
+    settings.backgroundPath,
+    settings.backgroundLightPath,
+    settings.backgroundDarkPath,
+  ].filter((path): path is string => typeof path === "string");
+}
+
 /**
- * Discards the uploaded background and returns the site to a preset.
+ * Discards one background and returns that slot to a preset (R8).
+ * `?slot=light|dark` clears one member of the pair; no slot clears the single
+ * background. The stored object goes too — paths carry a timestamp, so an
+ * orphan is unreachable — but only when nothing else points at it, since two
+ * slots may name the same image (AE3).
  *
- * The stored object goes too, not just the reference to it. Leaving the bytes
- * behind would keep the owner paying for storage they believe they cleared,
- * and the bucket has no other way to reach them — paths carry a timestamp, so
- * an orphan is not something a later upload overwrites.
- *
- * The settings row is written first. If the delete then fails the site is
- * already off the custom background, which is what was asked for; the reverse
- * order can delete the bytes and leave the site pointing at them.
+ * Settings are written first and references counted from the state after: the
+ * reverse order can delete bytes and leave the site pointing at them.
  */
-export async function handleBackgroundDelete(): Promise<Response> {
+export async function handleBackgroundDelete(
+  request: Request,
+): Promise<Response> {
   const denied = await requireOwner();
   if (denied) return denied;
 
   try {
-    const current = await readSiteSettings();
-    const path = current.backgroundPath;
+    const slot = slotOf(request);
+    const before = await readSiteSettings();
 
-    const settings = await writeSiteSettings({
-      backgroundPath: null,
-      backgroundId: DEFAULT_BACKGROUND_ID,
-    });
+    const path =
+      slot === null
+        ? before.backgroundPath
+        : before[BACKGROUND_SLOT_PATH_FIELDS[slot]];
 
-    if (path && isAssetPath("background", path)) await deleteAsset(path);
+    const settings = await writeSiteSettings(
+      slot === null
+        ? { backgroundPath: null, backgroundId: DEFAULT_BACKGROUND_ID }
+        : {
+            [BACKGROUND_SLOT_PATH_FIELDS[slot]]: null,
+            // Null, not a preset id — an empty slot is what falls back.
+            [BACKGROUND_SLOT_FIELDS[slot]]: null,
+          },
+    );
+
+    const stillReferenced = referencedBackgroundPaths(settings).includes(
+      path ?? "",
+    );
+
+    if (path && !stillReferenced && isAssetPath("background", path)) {
+      await deleteAsset(path);
+    }
 
     return Response.json(settings, { headers: { "cache-control": "no-store" } });
   } catch (error) {
@@ -211,19 +296,38 @@ export async function handleSettingsUpdate(request: Request): Promise<Response> 
     const body = (await request.json()) as Record<string, unknown>;
     const patch = pickEditable(body);
 
-    // Selecting the custom background with nothing uploaded would strand the
-    // site on a missing image, so it is refused rather than resolved silently.
-    if (patch.backgroundId === CUSTOM_BACKGROUND_ID) {
-      const { backgroundPath } = await readSiteSettings();
-      if (!backgroundPath) {
-        return Response.json(
-          {
-            error: "Upload a background image before selecting it.",
-            field: "backgroundId",
-          },
-          { status: 422 },
-        );
+    const touchesBackground =
+      patch.backgroundId === CUSTOM_BACKGROUND_ID ||
+      APPEARANCES.some(
+        (appearance) => patch[BACKGROUND_SLOT_FIELDS[appearance]] !== undefined,
+      );
+
+    if (touchesBackground) {
+      const current = await readSiteSettings();
+
+      // Selecting `custom` with nothing uploaded would strand the site on a
+      // missing image. Each slot has its own upload, so each is asked.
+      const selectable: Array<{ field: keyof SiteSettings; path: string | null }> = [
+        { field: "backgroundId", path: current.backgroundPath },
+        ...APPEARANCES.map((appearance) => ({
+          field: BACKGROUND_SLOT_FIELDS[appearance] as keyof SiteSettings,
+          path: current[BACKGROUND_SLOT_PATH_FIELDS[appearance]],
+        })),
+      ];
+
+      for (const { field, path } of selectable) {
+        if (patch[field] === CUSTOM_BACKGROUND_ID && !path) {
+          return Response.json(
+            {
+              error: "Upload a background image before selecting it.",
+              field,
+            },
+            { status: 422 },
+          );
+        }
       }
+
+      checkPairMediaKinds({ ...current, ...patch });
     }
 
     const settings = await writeSiteSettings(patch);

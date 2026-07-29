@@ -23,6 +23,13 @@
      independently tunable without any component reading either value. */
   --glass-alpha-frame: 0.55;
   --glass-alpha-pane: 0.55;
+  /* The wallpaper is a theme token, published per layer by ThemeVars so the
+     resolved appearance selects it by cascade rather than by React (R13).
+     This bare root is also the light layer; the two below it are the OS
+     preference and the explicit override. A declaration is needed in all
+     three, because a reader with no stored choice and no schedule never gets
+     a data-theme attribute and reaches the wallpaper through the media query
+     alone (R12). Nothing reads these in JavaScript. */
   --bg-image: none;
   --bg-position: center;
 
@@ -125,6 +132,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --bg-image: none;
     --glass-tint: 22 27 38;
 
     --glass-border: rgb(255 255 255 / 0.14);
@@ -148,6 +156,14 @@
 }
 
 :root[data-theme="light"] {
+  /* Narrowed from the `light dark` on the bare root (R17). Left wide, the
+     browser paints its own widgets from the OS preference, so a reader who
+     explicitly chose light on a dark machine got dark form controls inside a
+     light page — and every button the site does not paint a background onto
+     came out dark too. This is the only place the property appears besides
+     that root declaration. */
+  color-scheme: light;
+  --bg-image: none;
   --glass-tint: 255 255 255;
 
   --glass-border: rgb(255 255 255 / 0.5);
@@ -173,6 +189,8 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-image: none;
   --glass-tint: 22 27 38;
 
   --glass-border: rgb(255 255 255 / 0.14);

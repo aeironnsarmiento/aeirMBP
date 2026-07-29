@@ -24,6 +24,19 @@ vi.mock("next/headers", () => ({
 const holder = vi.hoisted(() => ({ db: null as unknown }));
 vi.mock("@/lib/db/client", () => ({ getDb: () => holder.db }));
 
+/**
+ * Only the byte delete is stood in for. Everything else in the storage module
+ * stays real, so path minting and the asset-path check are exercised as
+ * written — the delete is the one call that would reach a live bucket.
+ */
+const deleted = vi.hoisted(() => ({ paths: [] as string[] }));
+vi.mock("@/lib/site/storage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/site/storage")>()),
+  deleteAsset: async (path: string) => {
+    deleted.paths.push(path);
+  },
+}));
+
 let db: SiteDb;
 let close: () => Promise<void>;
 
@@ -53,6 +66,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   sessionCookie = undefined;
+  deleted.paths = [];
   await db.delete(siteSetting);
 });
 
@@ -62,7 +76,7 @@ describe("unauthenticated access (AE2, R34)", () => {
 
     const response = await handleSettingsUpdate(post({ backgroundId: "dune" }));
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(404);
     expect((await readSiteSettings(db)).backgroundId).toBe(
       DEFAULT_SITE_SETTINGS.backgroundId,
     );
@@ -71,7 +85,7 @@ describe("unauthenticated access (AE2, R34)", () => {
   it("rejects a settings read", async () => {
     const { handleSettingsRead } = await import("./handlers");
 
-    expect((await handleSettingsRead()).status).toBe(401);
+    expect((await handleSettingsRead()).status).toBe(404);
   });
 
   it("omits the settings manifest from an unauthenticated registry", () => {
@@ -259,7 +273,7 @@ describe("background upload permission (R12, R13)", () => {
       jsonRequest("POST", { type: "image/gif", size: 1_000 }),
     );
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(404);
   });
 });
 
@@ -303,7 +317,7 @@ describe("recording an uploaded background (R11, R13)", () => {
       jsonRequest("PUT", { path: "background/1.gif" }),
     );
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(404);
     expect((await readSiteSettings(db)).backgroundPath).toBeNull();
   });
 });
@@ -360,7 +374,7 @@ describe("storage self-check (R18)", () => {
   it("refuses a visitor", async () => {
     const { handleStorageCheck } = await import("./handlers");
 
-    expect((await handleStorageCheck()).status).toBe(401);
+    expect((await handleStorageCheck()).status).toBe(404);
   });
 
   it("reports the credential fault rather than a vendor string", async () => {
@@ -385,7 +399,7 @@ describe("storage repair (R18)", () => {
   it("refuses a visitor", async () => {
     const { handleStorageRepair } = await import("./handlers");
 
-    expect((await handleStorageRepair()).status).toBe(401);
+    expect((await handleStorageRepair()).status).toBe(404);
   });
 
   it("reports the credential fault instead of calling storage with a bad key", async () => {
@@ -403,5 +417,247 @@ describe("storage repair (R18)", () => {
 
     if (saved === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     else process.env.SUPABASE_SERVICE_ROLE_KEY = saved;
+  });
+});
+
+function slotRequest(method: string, slot?: "light" | "dark", body?: unknown) {
+  const url = slot
+    ? `https://example.test/api/settings/upload?slot=${slot}`
+    : "https://example.test/api/settings/upload";
+  return new Request(url, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+describe("the background pair (R8, AE3)", () => {
+  it("assigns both slots in one patch", async () => {
+    const { handleSettingsUpdate } = await import("./handlers");
+    await asOwner();
+
+    const response = await handleSettingsUpdate(
+      post({ backgroundLightId: "frost", backgroundDarkId: "orchid" }),
+    );
+
+    expect(response.status).toBe(200);
+    const settings = await readSiteSettings(db);
+    expect(settings.backgroundLightId).toBe("frost");
+    expect(settings.backgroundDarkId).toBe("orchid");
+  });
+
+  it("records an upload against the slot it names", async () => {
+    const { handleUploadConfirm } = await import("./handlers");
+    await asOwner();
+
+    await handleUploadConfirm(
+      slotRequest("PUT", "dark", { path: "background/1730000000001.png" }),
+    );
+
+    const settings = await readSiteSettings(db);
+    expect(settings.backgroundDarkPath).toBe("background/1730000000001.png");
+    expect(settings.backgroundDarkId).toBe("custom");
+    // The single background is a separate slot and must not be co-opted.
+    expect(settings.backgroundPath).toBeNull();
+    expect(settings.backgroundLightPath).toBeNull();
+  });
+
+  it("clears one slot and leaves the other rendering", async () => {
+    const { handleSettingsUpdate, handleBackgroundDelete } = await import("./handlers");
+    await asOwner();
+    await handleSettingsUpdate(
+      post({ backgroundLightId: "frost", backgroundDarkId: "orchid" }),
+    );
+
+    const response = await handleBackgroundDelete(slotRequest("DELETE", "light"));
+
+    expect(response.status).toBe(200);
+    const settings = await readSiteSettings(db);
+    expect(settings.backgroundLightId).toBeNull();
+    expect(settings.backgroundDarkId).toBe("orchid");
+  });
+
+  it("refuses selecting a slot's custom background before anything is uploaded to it", async () => {
+    const { handleSettingsUpdate } = await import("./handlers");
+    await asOwner();
+
+    const response = await handleSettingsUpdate(post({ backgroundLightId: "custom" }));
+
+    expect(response.status).toBe(422);
+    expect((await response.json()).field).toBe("backgroundLightId");
+  });
+
+  it("refuses a video into an empty slot, so a pair can never hold one", async () => {
+    const { handleUploadConfirm } = await import("./handlers");
+    await asOwner();
+
+    const response = await handleUploadConfirm(
+      slotRequest("PUT", "dark", { path: "background/1730000000002.mp4" }),
+    );
+
+    expect(response.status).toBe(422);
+    expect((await response.json()).error).toMatch(/two still images/);
+    const settings = await readSiteSettings(db);
+    expect(settings.backgroundDarkId).toBeNull();
+    expect(settings.backgroundDarkPath).toBeNull();
+  });
+
+  it("refuses two videos as well, which are the same kind and still unrenderable", async () => {
+    const { handleUploadConfirm } = await import("./handlers");
+    await asOwner();
+
+    for (const slot of ["light", "dark"] as const) {
+      const response = await handleUploadConfirm(
+        slotRequest("PUT", slot, { path: `background/173000000001${slot === "light" ? 0 : 1}.mp4` }),
+      );
+      expect(response.status).toBe(422);
+    }
+
+    const settings = await readSiteSettings(db);
+    expect(settings.backgroundLightPath).toBeNull();
+    expect(settings.backgroundDarkPath).toBeNull();
+  });
+
+  it("refuses a video upload into the second slot of an image pair", async () => {
+    const { handleSettingsUpdate, handleUploadConfirm } = await import("./handlers");
+    await asOwner();
+    await handleSettingsUpdate(post({ backgroundLightId: "frost" }));
+
+    const response = await handleUploadConfirm(
+      slotRequest("PUT", "dark", { path: "background/1730000000003.mp4" }),
+    );
+
+    expect(response.status).toBe(422);
+    expect((await readSiteSettings(db)).backgroundDarkPath).toBeNull();
+  });
+
+  it("still allows a video as the single background for both appearances", async () => {
+    const { handleUploadConfirm } = await import("./handlers");
+    await asOwner();
+
+    const response = await handleUploadConfirm(
+      slotRequest("PUT", undefined, { path: "background/1730000000004.mp4" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect((await readSiteSettings(db)).backgroundPath).toBe(
+      "background/1730000000004.mp4",
+    );
+  });
+});
+
+describe("reference-counted byte deletion (R8, AE3)", () => {
+  it("deletes the bytes when the slot it clears was the last reference", async () => {
+    const { handleUploadConfirm, handleBackgroundDelete } = await import("./handlers");
+    await asOwner();
+    await handleUploadConfirm(
+      slotRequest("PUT", "light", { path: "background/1730000000005.png" }),
+    );
+
+    await handleBackgroundDelete(slotRequest("DELETE", "light"));
+
+    expect(deleted.paths).toEqual(["background/1730000000005.png"]);
+  });
+
+  it("leaves the bytes in place while the other slot still points at them", async () => {
+    const { handleUploadConfirm, handleBackgroundDelete } = await import("./handlers");
+    await asOwner();
+    const path = "background/1730000000006.png";
+    await handleUploadConfirm(slotRequest("PUT", "light", { path }));
+    await handleUploadConfirm(slotRequest("PUT", "dark", { path }));
+
+    await handleBackgroundDelete(slotRequest("DELETE", "light"));
+
+    expect(deleted.paths).toEqual([]);
+    const settings = await readSiteSettings(db);
+    expect(settings.backgroundLightPath).toBeNull();
+    expect(settings.backgroundDarkPath).toBe(path);
+  });
+
+  it("deletes the bytes once the second reference goes too", async () => {
+    const { handleUploadConfirm, handleBackgroundDelete } = await import("./handlers");
+    await asOwner();
+    const path = "background/1730000000007.png";
+    await handleUploadConfirm(slotRequest("PUT", "light", { path }));
+    await handleUploadConfirm(slotRequest("PUT", "dark", { path }));
+
+    await handleBackgroundDelete(slotRequest("DELETE", "light"));
+    await handleBackgroundDelete(slotRequest("DELETE", "dark"));
+
+    expect(deleted.paths).toEqual([path]);
+  });
+
+  it("does not delete a slot's bytes when the single background still names them", async () => {
+    const { handleUploadConfirm, handleBackgroundDelete } = await import("./handlers");
+    await asOwner();
+    const path = "background/1730000000008.png";
+    await handleUploadConfirm(slotRequest("PUT", undefined, { path }));
+    await handleUploadConfirm(slotRequest("PUT", "dark", { path }));
+
+    await handleBackgroundDelete(slotRequest("DELETE", "dark"));
+
+    expect(deleted.paths).toEqual([]);
+    expect((await readSiteSettings(db)).backgroundPath).toBe(path);
+  });
+
+  it("still clears the single background when no slot is named", async () => {
+    const { handleUploadConfirm, handleBackgroundDelete } = await import("./handlers");
+    await asOwner();
+    await handleUploadConfirm(
+      slotRequest("PUT", undefined, { path: "background/1730000000009.png" }),
+    );
+
+    await handleBackgroundDelete(slotRequest("DELETE"));
+
+    const settings = await readSiteSettings(db);
+    expect(settings.backgroundPath).toBeNull();
+    expect(settings.backgroundId).toBe(DEFAULT_SITE_SETTINGS.backgroundId);
+    expect(deleted.paths).toEqual(["background/1730000000009.png"]);
+  });
+
+  it("refuses a visitor", async () => {
+    const { handleBackgroundDelete } = await import("./handlers");
+
+    expect((await handleBackgroundDelete(slotRequest("DELETE", "light"))).status).toBe(
+      404,
+    );
+    expect(deleted.paths).toEqual([]);
+  });
+});
+
+describe("the appearance schedule (R9)", () => {
+  it("persists a switchover time and target", async () => {
+    const { handleSettingsUpdate } = await import("./handlers");
+    await asOwner();
+
+    const response = await handleSettingsUpdate(
+      post({ themeSwitchoverAt: "19:00", themeSwitchoverTo: "dark" }),
+    );
+
+    expect(response.status).toBe(200);
+    const settings = await readSiteSettings(db);
+    expect(settings.themeSwitchoverAt).toBe("19:00");
+    expect(settings.themeSwitchoverTo).toBe("dark");
+  });
+
+  it("rejects a malformed time, naming the field", async () => {
+    const { handleSettingsUpdate } = await import("./handlers");
+    await asOwner();
+
+    const response = await handleSettingsUpdate(post({ themeSwitchoverAt: "25:00" }));
+
+    expect(response.status).toBe(422);
+    expect((await response.json()).field).toBe("themeSwitchoverAt");
+    expect((await readSiteSettings(db)).themeSwitchoverAt).toBeNull();
+  });
+
+  it("clears the schedule", async () => {
+    const { handleSettingsUpdate } = await import("./handlers");
+    await asOwner();
+    await handleSettingsUpdate(post({ themeSwitchoverAt: "19:00" }));
+
+    await handleSettingsUpdate(post({ themeSwitchoverAt: null }));
+
+    expect((await readSiteSettings(db)).themeSwitchoverAt).toBeNull();
   });
 });

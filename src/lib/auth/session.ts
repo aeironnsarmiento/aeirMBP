@@ -22,11 +22,22 @@ export type SessionVerdict =
   | { valid: true; expiresAt: number }
   | { valid: false; reason: "malformed" | "expired" | "bad-signature" };
 
+/** Below this, HMAC keying is weak enough that the secret is not one. */
+export const MIN_OWNER_SECRET_LENGTH = 16;
+
+/** Asked before touching a credential, so a broken deploy is named in the log
+ *  rather than inferred from whatever probe happened to arrive. */
+export function ownerSecretFault(): "secret-unset" | "secret-too-short" | null {
+  const secret = process.env.OWNER_SECRET;
+  if (!secret) return "secret-unset";
+  return secret.length < MIN_OWNER_SECRET_LENGTH ? "secret-too-short" : null;
+}
+
 function ownerSecret(): string {
   const secret = process.env.OWNER_SECRET;
-  if (!secret || secret.length < 16) {
+  if (!secret || secret.length < MIN_OWNER_SECRET_LENGTH) {
     throw new Error(
-      "OWNER_SECRET is missing or shorter than 16 characters. Owner auth cannot operate.",
+      `OWNER_SECRET is missing or shorter than ${MIN_OWNER_SECRET_LENGTH} characters. Owner auth cannot operate.`,
     );
   }
   return secret;

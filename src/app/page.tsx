@@ -7,6 +7,7 @@ import {
   type SiteSettings,
 } from "@/lib/site/settings";
 import { publicAssetUrl } from "@/lib/site/storage";
+import type { BackgroundSlots } from "@/lib/theme/backgrounds";
 import { readNowPlaying } from "@/widgets/music/server/now";
 import type { NowPlaying } from "@/widgets/music/server/now";
 
@@ -30,14 +31,31 @@ export default async function Page() {
     safeNowPlaying(),
   ]);
 
+  // Resolved once here: turning a stored path into a URL needs the storage
+  // module, and both consumers below are client-safe.
+  const backgrounds: BackgroundSlots = {
+    single: {
+      id: settings.backgroundId,
+      customUrl: publicAssetUrl(settings.backgroundPath),
+    },
+    light: {
+      id: settings.backgroundLightId,
+      customUrl: publicAssetUrl(settings.backgroundLightPath),
+    },
+    dark: {
+      id: settings.backgroundDarkId,
+      customUrl: publicAssetUrl(settings.backgroundDarkPath),
+    },
+  };
+
   return (
     <>
-      <ThemeVars settings={settings} />
+      <ThemeVars settings={settings} backgrounds={backgrounds} />
       <Shell
         site={{
           settings,
           avatarUrl: publicAssetUrl(settings.avatarPath),
-          backgroundUrl: publicAssetUrl(settings.backgroundPath),
+          backgrounds,
           isOwner,
         }}
         nowPlaying={nowPlaying}
@@ -46,10 +64,24 @@ export default async function Page() {
   );
 }
 
+/**
+ * Degrading, but no longer silently. A failed settings read renders the whole
+ * site from defaults, which right after a save is indistinguishable from a
+ * save that never took — the last standing candidate for the About-save
+ * defect. See docs/about-save-propagation-diagnosis.md.
+ */
+function reportDegraded(what: string, error: unknown): void {
+  console.error(
+    `[page] ${what} failed; rendering the degraded path:`,
+    error instanceof Error ? error.message : error,
+  );
+}
+
 async function safeSettings(): Promise<SiteSettings> {
   try {
     return await readSiteSettings();
-  } catch {
+  } catch (error) {
+    reportDegraded("settings read", error);
     return DEFAULT_SITE_SETTINGS;
   }
 }
@@ -57,9 +89,10 @@ async function safeSettings(): Promise<SiteSettings> {
 async function safeOwner(): Promise<boolean> {
   try {
     return await isOwnerRequest();
-  } catch {
+  } catch (error) {
     // A missing OWNER_SECRET means owner auth cannot operate. Failing closed
     // is the only safe reading of that.
+    reportDegraded("owner check", error);
     return false;
   }
 }
@@ -67,7 +100,8 @@ async function safeOwner(): Promise<boolean> {
 async function safeNowPlaying(): Promise<NowPlaying | null> {
   try {
     return await readNowPlaying();
-  } catch {
+  } catch (error) {
+    reportDegraded("now-playing read", error);
     return null;
   }
 }

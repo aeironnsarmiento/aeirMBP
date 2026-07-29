@@ -4,6 +4,9 @@ import {
   CUSTOM_BACKGROUND_ID,
   DEFAULT_BACKGROUND_ID,
   backgroundById,
+  backgroundForAppearance,
+  hasBackgroundPair,
+  type BackgroundSlots,
 } from "./backgrounds";
 
 const SUPABASE = "https://example.supabase.co/storage/v1/object/public/site-assets/background";
@@ -42,5 +45,96 @@ describe("the committed set", () => {
 
   it("falls back to the default for an unknown id", () => {
     expect(backgroundById("nope").id).toBe(DEFAULT_BACKGROUND_ID);
+  });
+});
+
+function slots(overrides: Partial<BackgroundSlots> = {}): BackgroundSlots {
+  return {
+    single: { id: DEFAULT_BACKGROUND_ID, customUrl: null },
+    light: { id: null, customUrl: null },
+    dark: { id: null, customUrl: null },
+    ...overrides,
+  };
+}
+
+describe("resolving a background for an appearance (R8)", () => {
+  it("uses one source for both modes when no pair is configured (AE2)", () => {
+    const configured = slots({ single: { id: "dune", customUrl: null } });
+
+    expect(backgroundForAppearance("light", configured).src).toBe(
+      backgroundForAppearance("dark", configured).src,
+    );
+    expect(backgroundForAppearance("light", configured).id).toBe("dune");
+  });
+
+  it("keeps an uploaded single background across a mode switch (AE2)", () => {
+    const configured = slots({
+      single: { id: CUSTOM_BACKGROUND_ID, customUrl: `${SUPABASE}/one.mp4` },
+    });
+
+    expect(backgroundForAppearance("light", configured).src).toBe(
+      `${SUPABASE}/one.mp4`,
+    );
+    expect(backgroundForAppearance("dark", configured).src).toBe(
+      `${SUPABASE}/one.mp4`,
+    );
+  });
+
+  it("returns different sources for a configured pair (AE3)", () => {
+    const configured = slots({
+      light: { id: "frost", customUrl: null },
+      dark: { id: "orchid", customUrl: null },
+    });
+
+    expect(backgroundForAppearance("light", configured).id).toBe("frost");
+    expect(backgroundForAppearance("dark", configured).id).toBe("orchid");
+  });
+
+  it("fills an emptied slot with a mood-matched preset, not the dark default (AE3)", () => {
+    const configured = slots({ dark: { id: "orchid", customUrl: null } });
+
+    const light = backgroundForAppearance("light", configured);
+
+    expect(backgroundForAppearance("dark", configured).id).toBe("orchid");
+    expect(light.mood).toBe("light");
+    expect(light.id).not.toBe(DEFAULT_BACKGROUND_ID);
+    expect(light.id).not.toBe("orchid");
+  });
+
+  it("fills an emptied dark slot with a dark-mood preset", () => {
+    const configured = slots({ light: { id: "frost", customUrl: null } });
+
+    expect(backgroundForAppearance("dark", configured).mood).toBe("dark");
+  });
+
+  it("does not let the single background stand in for a half-emptied pair", () => {
+    // The single value is still stored; the pair is what the owner is running.
+    const configured = slots({
+      single: { id: "dune", customUrl: null },
+      dark: { id: "orchid", customUrl: null },
+    });
+
+    expect(backgroundForAppearance("light", configured).id).not.toBe("dune");
+  });
+
+  it("reports whether a pair is configured at all", () => {
+    expect(hasBackgroundPair(slots())).toBe(false);
+    expect(hasBackgroundPair(slots({ light: { id: "frost", customUrl: null } }))).toBe(
+      true,
+    );
+  });
+
+  it("resolves each slot's own upload", () => {
+    const configured = slots({
+      light: { id: CUSTOM_BACKGROUND_ID, customUrl: `${SUPABASE}/day.png` },
+      dark: { id: CUSTOM_BACKGROUND_ID, customUrl: `${SUPABASE}/night.png` },
+    });
+
+    expect(backgroundForAppearance("light", configured).src).toBe(
+      `${SUPABASE}/day.png`,
+    );
+    expect(backgroundForAppearance("dark", configured).src).toBe(
+      `${SUPABASE}/night.png`,
+    );
   });
 });

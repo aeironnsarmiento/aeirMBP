@@ -11,8 +11,14 @@ import { DEFAULT_BACKGROUND_ID, isBackgroundId } from "@/lib/theme/backgrounds";
 
 export type SiteLink = { label: string; href: string };
 
+/** The two appearances, named where no `useTheme` import is welcome. */
+export type Appearance = "light" | "dark";
+
+export const APPEARANCES = ["light", "dark"] as const;
+
 export type SiteSettings = {
-  /** Owner-authored identity, served to every visitor (R8, R10). */
+  /** The single background, used for both appearances, and the only key an
+   *  owner predating the pair has set. `backgroundForAppearance` has the rule. */
   backgroundId: string;
   /** The frame's translucency — the one surface that blurs (R14). */
   frameOpacity: number;
@@ -21,6 +27,22 @@ export type SiteSettings = {
   avatarPath: string | null;
   /** Object path of the owner's uploaded background, when there is one (R11). */
   backgroundPath: string | null;
+  /** The pair (R8). Null is "unset", not "no image" — an unset slot falls
+   *  through to the single background or a mood-matched preset. */
+  backgroundLightId: string | null;
+  backgroundDarkId: string | null;
+  /** Per-slot uploads. Two slots may name the same object (AE3). */
+  backgroundLightPath: string | null;
+  backgroundDarkPath: string | null;
+  /**
+   * `HH:MM` on the reader's own clock, or null for no schedule (R9, R10). One
+   * boundary splits the day: at or after it the appearance is
+   * `themeSwitchoverTo`, before it the other. So it resets at local midnight —
+   * 19:00→dark means dark 19:00–24:00 and light 00:00–19:00. A dusk-and-dawn
+   * pair would need two boundaries; R9 asks for one.
+   */
+  themeSwitchoverAt: string | null;
+  themeSwitchoverTo: Appearance;
   /** About content (R17, R19). */
   aboutCopy: string;
   name: string;
@@ -42,6 +64,12 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   paneOpacity: 0.55,
   avatarPath: null,
   backgroundPath: null,
+  backgroundLightId: null,
+  backgroundDarkId: null,
+  backgroundLightPath: null,
+  backgroundDarkPath: null,
+  themeSwitchoverAt: null,
+  themeSwitchoverTo: "dark",
   aboutCopy:
     "I build things for the web and listen to a lot of music. This site is a desktop: every tab is a widget you can open, and the music one runs on my own scrobble history rather than someone else's dashboard.",
   name: "xenavalon",
@@ -62,6 +90,14 @@ export const SETTING_KEYS = {
   paneOpacity: "theme.paneOpacity",
   avatarPath: "site.avatarPath",
   backgroundPath: "site.backgroundPath",
+  // New keys, never renames — the single-background keys above stay readable,
+  // so a background configured before the pair keeps rendering.
+  backgroundLightId: "theme.backgroundLight",
+  backgroundDarkId: "theme.backgroundDark",
+  backgroundLightPath: "site.backgroundLightPath",
+  backgroundDarkPath: "site.backgroundDarkPath",
+  themeSwitchoverAt: "theme.switchoverAt",
+  themeSwitchoverTo: "theme.switchoverTo",
   aboutCopy: "about.copy",
   name: "about.name",
   handle: "about.handle",
@@ -198,11 +234,74 @@ export class SettingsValidationError extends Error {
  * opacity of 4 into 0.85 hides a caller bug and leaves the owner wondering why
  * the slider did nothing.
  */
+/** The pair's two fields, so validation and the picker iterate one list. */
+export const BACKGROUND_SLOT_FIELDS = {
+  light: "backgroundLightId",
+  dark: "backgroundDarkId",
+} as const satisfies Record<Appearance, keyof SiteSettings>;
+
+export const BACKGROUND_SLOT_PATH_FIELDS = {
+  light: "backgroundLightPath",
+  dark: "backgroundDarkPath",
+} as const satisfies Record<Appearance, keyof SiteSettings>;
+
+/** `HH:MM` on a 24-hour clock, and nothing else. */
+const SWITCHOVER_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+export function isSwitchoverTime(value: unknown): value is string {
+  return typeof value === "string" && SWITCHOVER_PATTERN.test(value);
+}
+
+/** Minutes since local midnight, for comparing a schedule against a clock. */
+export function switchoverMinutes(value: string): number {
+  const [hours, minutes] = value.split(":");
+  return Number(hours) * 60 + Number(minutes);
+}
+
 export function validatePatch(patch: Partial<SiteSettings>): void {
   if (patch.backgroundId !== undefined && !isBackgroundId(patch.backgroundId)) {
     throw new SettingsValidationError(
       "backgroundId",
       `Unknown background: ${String(patch.backgroundId)}`,
+    );
+  }
+
+  // Null clears a slot; omitting the field leaves it alone (AE3).
+  for (const field of Object.values(BACKGROUND_SLOT_FIELDS)) {
+    const value = patch[field];
+    if (value === undefined || value === null) continue;
+    if (!isBackgroundId(value)) {
+      throw new SettingsValidationError(
+        field,
+        `Unknown background: ${String(value)}`,
+      );
+    }
+  }
+
+  for (const field of Object.values(BACKGROUND_SLOT_PATH_FIELDS)) {
+    const value = patch[field];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== "string") {
+      throw new SettingsValidationError(field, `${field} must be a stored path`);
+    }
+  }
+
+  if (patch.themeSwitchoverAt !== undefined && patch.themeSwitchoverAt !== null) {
+    if (!isSwitchoverTime(patch.themeSwitchoverAt)) {
+      throw new SettingsValidationError(
+        "themeSwitchoverAt",
+        `Switchover time must be HH:MM between 00:00 and 23:59: ${String(patch.themeSwitchoverAt)}`,
+      );
+    }
+  }
+
+  if (
+    patch.themeSwitchoverTo !== undefined &&
+    !(APPEARANCES as readonly unknown[]).includes(patch.themeSwitchoverTo)
+  ) {
+    throw new SettingsValidationError(
+      "themeSwitchoverTo",
+      `Switchover appearance must be light or dark: ${String(patch.themeSwitchoverTo)}`,
     );
   }
 

@@ -6,8 +6,8 @@ import { auditBlurLayers } from "@/components/glass/blurBudget";
 import { BLUR_DEPTH_CEILING, GlassSurface } from "@/components/glass/GlassSurface";
 import { assembleRegistry } from "@/lib/registry/assemble";
 import type { WidgetManifest } from "@/lib/registry/types";
-import { DEFAULT_SITE_SETTINGS } from "@/lib/site/schema";
 import { SiteProvider } from "./SiteContext";
+import { siteFixture } from "./testSite";
 import { Sidebar } from "./Sidebar";
 import { WidgetGrid } from "./WidgetGrid";
 import { closedStore, storeOpenOn } from "./testStore";
@@ -53,12 +53,7 @@ const REGISTRY = assembleRegistry([
 function withSite(children: React.ReactNode) {
   return (
     <SiteProvider
-      value={{
-        settings: DEFAULT_SITE_SETTINGS,
-        avatarUrl: null,
-        backgroundUrl: null,
-        isOwner: false,
-      }}
+      value={siteFixture()}
     >
       {children}
     </SiteProvider>

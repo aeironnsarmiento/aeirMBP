@@ -73,9 +73,10 @@ export function assetPath(
   return `${ASSET_RULES[kind].prefix}/${now}.${EXTENSIONS[contentType] ?? "bin"}`;
 }
 
-/** True when the path is one this app would have minted for that kind. */
+/** True when the path is one this app would have minted. The extension class
+ *  must admit digits, or every `.mp4` upload is refused after storing bytes. */
 export function isAssetPath(kind: AssetKind, path: string): boolean {
-  return new RegExp(`^${ASSET_RULES[kind].prefix}/\\d+\\.[a-z]+$`).test(path);
+  return new RegExp(`^${ASSET_RULES[kind].prefix}/\\d+\\.[a-z0-9]+$`).test(path);
 }
 
 /** Stores an asset through the application server and returns its object path. */

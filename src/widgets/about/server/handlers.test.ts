@@ -58,13 +58,13 @@ describe("guarding the mutation handlers (R34)", () => {
       }),
     );
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(404);
   });
 
   it("rejects an unauthenticated read of the editing payload", async () => {
     const { handleAboutRead } = await import("./handlers");
 
-    expect((await handleAboutRead()).status).toBe(401);
+    expect((await handleAboutRead()).status).toBe(404);
   });
 
   it("rejects a tampered session cookie", async () => {
@@ -73,7 +73,27 @@ describe("guarding the mutation handlers (R34)", () => {
     const token = await issueSessionToken();
     sessionCookie = `${token.slice(0, -1)}x`;
 
-    expect((await handleAboutRead()).status).toBe(401);
+    const response = await handleAboutRead();
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("");
+  });
+
+  it("refuses in the same words as the settings route, so neither confirms itself (AE5)", async () => {
+    const { handleAboutRead } = await import("./handlers");
+    const { handleSettingsRead } = await import(
+      "@/widgets/settings/server/handlers"
+    );
+
+    const print = async (response: Response) => ({
+      status: response.status,
+      headers: [...response.headers.entries()].sort(),
+      body: await response.text(),
+    });
+
+    expect(await print(await handleAboutRead())).toEqual(
+      await print(await handleSettingsRead()),
+    );
   });
 
   it("admits a valid owner session", async () => {

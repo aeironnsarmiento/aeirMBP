@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { GlassSurface } from "@/components/glass/GlassSurface";
 import { useSite } from "@/components/shell/SiteContext";
+import { failureMessage } from "@/lib/http/rejection";
 import type { WidgetExpandedProps } from "@/lib/registry/types";
 import type { SiteLink, SiteSettings } from "@/lib/site/schema";
 import { initialsFor } from "@/widgets/music/format";
@@ -202,8 +203,7 @@ function AboutForm({
         }),
       });
 
-      const body = await response.json();
-      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
+      if (!response.ok) throw new Error(await failureMessage(response));
 
       setStatus({ tone: "ok", message: "Saved." });
       // The shell resolves settings server-side, so a refresh is what makes the
