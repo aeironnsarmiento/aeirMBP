@@ -7,6 +7,7 @@ import { isBackgroundId } from "@/lib/theme/backgrounds";
 import {
   DEFAULT_SITE_SETTINGS,
   SETTING_KEYS,
+  isSwitchoverTime,
   validatePatch,
   type SiteLink,
   type SiteSettings,
@@ -76,10 +77,28 @@ function rowsToSettings(
         break;
       case "avatarPath":
       case "backgroundPath":
+      case "backgroundLightPath":
+      case "backgroundDarkPath":
         settings[field] = typeof row.value === "string" ? row.value : null;
         break;
       case "backgroundId":
         if (isBackgroundId(row.value)) settings.backgroundId = row.value;
+        break;
+      // Each needs its own case: the default branch coerces through
+      // `asString`, so anything reaching it reads back as "" with no error.
+      case "backgroundLightId":
+      case "backgroundDarkId":
+        settings[field] = isBackgroundId(row.value) ? row.value : null;
+        break;
+      case "themeSwitchoverAt":
+        settings.themeSwitchoverAt = isSwitchoverTime(row.value)
+          ? row.value
+          : null;
+        break;
+      case "themeSwitchoverTo":
+        if (row.value === "light" || row.value === "dark") {
+          settings.themeSwitchoverTo = row.value;
+        }
         break;
       default:
         settings[field] = asString(row.value);

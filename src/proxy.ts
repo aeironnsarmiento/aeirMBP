@@ -1,28 +1,39 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
+import { rejectAsMissing, type OwnerFault } from "@/lib/auth/guard";
+import {
+  SESSION_COOKIE,
+  ownerSecretFault,
+  verifySessionToken,
+} from "@/lib/auth/session";
 
 /**
- * Blanket guard over every owner-only API path.
+ * Blanket guard over every owner-only API path, so an unauthenticated mutation
+ * never reaches handler code or opens a database connection. Handlers call
+ * `requireOwner()` too, so a route added without a matcher entry still fails
+ * closed (R34). Both layers answer with the same bare 404 (R2).
  *
- * The plan calls this `middleware.ts`; Next 16 renamed the convention to
- * `proxy.ts` and fails the build when both files exist. Same request
- * interception, same matcher semantics.
- *
- * This is the outer layer, not the only one: each handler calls requireOwner()
- * as well, so a route added later without a matcher entry still fails closed
- * (R34). The proxy exists so an unauthenticated mutation never reaches handler
- * code or opens a database connection.
+ * Next 16 renamed the `middleware.ts` convention to `proxy.ts` and fails the
+ * build when both exist.
  */
 export async function proxy(request: NextRequest) {
-  const token = request.cookies.get(SESSION_COOKIE)?.value;
-  const verdict = await verifySessionToken(token);
+  const fault = await sessionFault(request);
+  if (!fault) return NextResponse.next();
 
-  if (verdict.valid) return NextResponse.next();
+  return rejectAsMissing(fault, request.nextUrl.pathname);
+}
 
-  return NextResponse.json(
-    { error: "unauthorized" },
-    { status: 401, headers: { "cache-control": "no-store" } },
-  );
+/** Never throws: without this a misconfigured deploy 500s here, before any
+ *  route handler's own wrapping gets a say (AE6). */
+async function sessionFault(request: NextRequest): Promise<OwnerFault | null> {
+  const misconfigured = ownerSecretFault();
+  if (misconfigured) return misconfigured;
+
+  try {
+    const token = request.cookies.get(SESSION_COOKIE)?.value;
+    return (await verifySessionToken(token)).valid ? null : "no-session";
+  } catch {
+    return "session-unreadable";
+  }
 }
 
 export const config = {

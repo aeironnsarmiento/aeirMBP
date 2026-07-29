@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { assembleRegistry } from "@/lib/registry/assemble";
 import type { WidgetManifest } from "@/lib/registry/types";
-import { DEFAULT_SITE_SETTINGS } from "@/lib/site/schema";
 import { SiteProvider } from "./SiteContext";
+import { siteFixture } from "./testSite";
 import { WidgetGrid } from "./WidgetGrid";
 import { closedStore, storeOpenOn } from "./testStore";
 
@@ -50,12 +50,7 @@ const REGISTRY = assembleRegistry([
 function withSite(children: React.ReactNode) {
   return (
     <SiteProvider
-      value={{
-        settings: DEFAULT_SITE_SETTINGS,
-        avatarUrl: null,
-        backgroundUrl: null,
-        isOwner: false,
-      }}
+      value={siteFixture()}
     >
       {children}
     </SiteProvider>

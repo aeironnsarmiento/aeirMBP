@@ -1,7 +1,8 @@
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
-import { THEME_BOOT_SCRIPT } from "@/components/glass/useTheme";
+import { THEME_COLORS } from "@/components/glass/themeContract";
 import "./globals.css";
 
 const sans = Geist({
@@ -25,24 +26,21 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // The pre-hydration default, and the answer for a reader with no preference
+  // (R12). The theme module prepends a media-less one when an appearance
+  // resolves, and the first *matching* in tree order wins.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#e9edf5" },
-    { media: "(prefers-color-scheme: dark)", color: "#12161f" },
+    { media: "(prefers-color-scheme: light)", color: THEME_COLORS.light },
+    { media: "(prefers-color-scheme: dark)", color: THEME_COLORS.dark },
   ],
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    // The boot script writes data-theme onto this element before hydration.
+    // ThemeVars renders the pre-paint script that writes data-theme here, from
+    // the page rather than this layout: it reads request state, and this layout
+    // wraps the built-in not-found response.
     <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
-      <head>
-        <script
-          // Runs ahead of first paint so a visitor with a stored dark
-          // preference never sees a light frame. Absent a stored choice it
-          // writes nothing and prefers-color-scheme stays in charge (R9).
-          dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
-        />
-      </head>
       {/*
         Extensions mutate the body before React loads — a video-speed
         controller adds `vsc-initialized`, ad blockers add their own marks.
@@ -51,7 +49,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         Suppression covers one level only, so a real mismatch inside the shell
         still reports.
       */}
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }

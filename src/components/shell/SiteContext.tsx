@@ -2,18 +2,14 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 import type { SiteSettings } from "@/lib/site/schema";
+import type { BackgroundSlots } from "@/lib/theme/backgrounds";
 
 export type SiteContextValue = {
   settings: SiteSettings;
   avatarUrl: string | null;
-  /**
-   * The owner's uploaded background, resolved to a URL.
-   *
-   * Resolved on the server rather than derived here, because turning a stored
-   * object path into a URL needs the storage module and this context is read
-   * by client components (R11).
-   */
-  backgroundUrl: string | null;
+  /** Every slot, with uploads already resolved to URLs — that needs the
+   *  storage module, and this context is read by client components (R11). */
+  backgrounds: BackgroundSlots;
   /** Whether this request carries a valid owner session (R16). */
   isOwner: boolean;
 };

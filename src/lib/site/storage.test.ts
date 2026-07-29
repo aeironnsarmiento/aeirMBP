@@ -287,3 +287,32 @@ describe("repair planning (R18)", () => {
     expect(repairPlan(check(null))).toBeNull();
   });
 });
+
+describe("recognising a path this app minted", () => {
+  it("accepts every extension assetPath can produce, including the video ones", () => {
+    for (const type of [
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+      "image/avif",
+      "image/gif",
+      "video/mp4",
+      "video/webm",
+    ]) {
+      const path = assetPath("background", type, 1730000000000);
+      expect(isAssetPath("background", path)).toBe(true);
+    }
+  });
+
+  it("still refuses a path from somewhere else", () => {
+    for (const path of [
+      "avatar/1.png",
+      "../../etc/passwd",
+      "background/evil.gif",
+      "background/1.png/../../x",
+      "https://elsewhere.example/x.gif",
+    ]) {
+      expect(isAssetPath("background", path)).toBe(false);
+    }
+  });
+});

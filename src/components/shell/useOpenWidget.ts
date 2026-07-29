@@ -58,6 +58,24 @@ export function clearPendingTransitions(): void {
   tail = null;
 }
 
+/**
+ * Runs `work` once nothing is transitioning (KTD9). A theme write landing
+ * while frozen snapshots paint either arrives as a hard cut or cross-fades an
+ * old-theme wallpaper against a new-theme one — and the settled state looks
+ * correct either way. Re-checks, because a transition may queue behind the
+ * one being awaited.
+ */
+export function afterTransitions(work: () => void): void {
+  const pending = tail;
+  if (pending === null) {
+    work();
+    return;
+  }
+
+  const retry = () => afterTransitions(work);
+  void pending.then(retry, retry);
+}
+
 function enqueue(run: () => Promise<void>): void {
   // When nothing is running, `run` is called synchronously — the state change
   // must not wait on a microtask, and a `startViewTransition` that throws has

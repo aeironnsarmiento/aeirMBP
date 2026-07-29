@@ -6,17 +6,36 @@ import { GlassSurface } from "@/components/glass/GlassSurface";
 import { ImageCropper } from "@/components/media/ImageCropper";
 import { shouldCrop } from "@/components/media/cropGeometry";
 import { useSite } from "@/components/shell/SiteContext";
+import { afterTransitions } from "@/components/shell/useOpenWidget";
+import {
+  applyTheme,
+  currentTheme,
+  holdScheduledTheme,
+  otherTheme,
+  recomputeTheme,
+} from "@/components/glass/useTheme";
+import { failureMessage } from "@/lib/http/rejection";
 import { transcodeAnimation } from "@/lib/media/transcodeAnimation";
 import type { WidgetExpandedProps } from "@/lib/registry/types";
 import {
+  APPEARANCES,
   ASSET_RULES,
+  BACKGROUND_SLOT_FIELDS,
   GLASS_OPACITY_MAX,
   GLASS_OPACITY_MIN,
   formatMegabytes,
+  isSwitchoverTime,
   validateAsset,
+  type Appearance,
   type AssetKind,
 } from "@/lib/site/schema";
-import { BACKGROUNDS, CUSTOM_BACKGROUND_ID } from "@/lib/theme/backgrounds";
+import {
+  BACKGROUNDS,
+  CUSTOM_BACKGROUND_ID,
+  backgroundById,
+  hasBackgroundPair,
+  presetForMood,
+} from "@/lib/theme/backgrounds";
 import { initialsFor } from "@/widgets/music/format";
 import styles from "./settings.module.css";
 
@@ -67,7 +86,14 @@ const CROPS = {
   { aspect: number; maxWidth: number; confirm: string }
 >;
 
-type Pending = { kind: AssetKind; file: File };
+type Pending = { kind: AssetKind; file: File; appearance?: Appearance };
+
+/** The upload endpoint, told which slot it is for. */
+function uploadUrl(appearance?: Appearance): string {
+  return appearance
+    ? `/api/settings/upload?slot=${appearance}`
+    : "/api/settings/upload";
+}
 
 /** One opacity dial. Two of these, differing only in which value they own. */
 function OpacityRow({
@@ -105,6 +131,119 @@ function OpacityRow({
 }
 
 /**
+ * Shows the owner the appearance readers are not getting (R16, KTD8) — the
+ * whole appearance, since a dark image under light glass is the mismatch the
+ * pair exists to remove. Panel state, so the widget's unmount is the entire
+ * teardown. The schedule is held while it is up, and both the apply and the
+ * release go through the transition seam.
+ */
+function usePreview(preview: Appearance | null): void {
+  useEffect(() => {
+    if (preview === null) return;
+
+    holdScheduledTheme(true);
+    afterTransitions(() => applyTheme(preview));
+
+    return () => {
+      holdScheduledTheme(false);
+      // Re-resolved, not restored: a boundary may have passed meanwhile.
+      afterTransitions(() => recomputeTheme());
+    };
+  }, [preview]);
+}
+
+/** One appearance's wallpaper (R8). The slot's upload is one more entry in the
+ *  grid rather than a separate mode, so a bad upload is never a dead end. */
+function SlotPicker({
+  appearance,
+  selectedId,
+  customUrl,
+  disabled,
+  busy,
+  onSelect,
+  onUpload,
+  onRemove,
+}: {
+  appearance: Appearance;
+  selectedId: string | null;
+  customUrl: string | null;
+  disabled: boolean;
+  busy: string | null;
+  onSelect: (id: string) => void;
+  onUpload: () => void;
+  onRemove: () => void;
+}) {
+  const fallback = presetForMood(appearance);
+
+  return (
+    <div className={styles.slot}>
+      <div className={styles.slotHead}>
+        <span className={styles.slotLabel}>
+          {appearance === "light" ? "Light appearance" : "Dark appearance"}
+        </span>
+        {selectedId === null ? (
+          <span className={styles.sectionNote}>
+            Unset — falling back to {fallback.label}
+          </span>
+        ) : null}
+      </div>
+      <div className={styles.backgrounds}>
+        {BACKGROUNDS.map((background) => (
+          <button
+            key={background.id}
+            type="button"
+            className={styles.background}
+            style={{ backgroundImage: `url(${background.src})` }}
+            aria-pressed={background.id === selectedId}
+            aria-label={`Use the ${background.label} background for ${appearance}`}
+            disabled={disabled}
+            onClick={() => onSelect(background.id)}
+          >
+            <span className={styles.backgroundLabel}>{background.label}</span>
+          </button>
+        ))}
+        {customUrl ? (
+          <button
+            type="button"
+            className={styles.background}
+            style={{ backgroundImage: `url(${customUrl})` }}
+            aria-pressed={selectedId === CUSTOM_BACKGROUND_ID}
+            aria-label={`Use your uploaded ${appearance} background`}
+            disabled={disabled}
+            onClick={() => onSelect(CUSTOM_BACKGROUND_ID)}
+          >
+            <span className={styles.backgroundLabel}>Yours</span>
+          </button>
+        ) : null}
+      </div>
+      <div className={styles.buttonRow}>
+        <button
+          type="button"
+          className={styles.button}
+          disabled={disabled}
+          onClick={onUpload}
+        >
+          {busy === `background:${appearance}`
+            ? "Uploading…"
+            : `Upload a ${appearance} image`}
+        </button>
+        {selectedId !== null ? (
+          <button
+            type="button"
+            className={styles.button}
+            disabled={disabled}
+            onClick={onRemove}
+            aria-label={`Clear the ${appearance} background`}
+          >
+            {busy === `remove:${appearance}` ? "Clearing…" : "Clear"}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The owner's control surface (R32, R33).
  *
  * A registry entry that expands into the same glass modal as every other
@@ -113,7 +252,8 @@ function OpacityRow({
  */
 export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
   const router = useRouter();
-  const { settings, avatarUrl, backgroundUrl } = useSite();
+  const { settings, avatarUrl, backgrounds } = useSite();
+  const backgroundUrl = backgrounds.single.customUrl;
 
   const [frameOpacity, setFrameOpacity] = useState(settings.frameOpacity);
   const [paneOpacity, setPaneOpacity] = useState(settings.paneOpacity);
@@ -127,6 +267,17 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
   const [storage, setStorage] = useState<StorageReport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const backgroundInput = useRef<HTMLInputElement>(null);
+  const slotUpload = useRef<Record<Appearance, HTMLInputElement | null>>({
+    light: null,
+    dark: null,
+  });
+
+  // Read straight from context, never copied at mount — a copy goes stale the
+  // moment a refresh brings new settings in. The sliders keep the copy because
+  // they need local state to stay responsive under the pointer.
+  const paired = hasBackgroundPair(backgrounds);
+  const [preview, setPreview] = useState<Appearance | null>(null);
+  usePreview(preview);
 
   useEffect(() => {
     void refreshJobs();
@@ -163,8 +314,7 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
+      if (!response.ok) throw new Error(await failureMessage(response));
 
       setStatus({ tone: "ok", message: "Saved for every visitor." });
       router.refresh();
@@ -178,23 +328,73 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
     }
   }
 
+  /** Both members in one patch — the write layer is transactional per patch,
+   *  so two would half-configure every visitor in between (R8). */
+  function pairBackgrounds() {
+    const single = backgroundById(settings.backgroundId, backgroundUrl);
+    void save(
+      {
+        [BACKGROUND_SLOT_FIELDS.light]: presetForMood("light").id,
+        [BACKGROUND_SLOT_FIELDS.dark]:
+          single.kind === "image" ? settings.backgroundId : presetForMood("dark").id,
+      },
+      "background",
+    );
+  }
+
+  /** Any slot holding an upload goes through the removal endpoint first, so
+   *  its bytes are reference-counted rather than orphaned. */
+  async function unpairBackgrounds() {
+    for (const appearance of APPEARANCES) {
+      if (backgrounds[appearance].customUrl) await removeBackground(appearance);
+    }
+    await save(
+      {
+        [BACKGROUND_SLOT_FIELDS.light]: null,
+        [BACKGROUND_SLOT_FIELDS.dark]: null,
+      },
+      "background",
+    );
+  }
+
+  /** Checked before posting so a malformed value is named against its own
+   *  field — the same rule the server holds it to, run early enough to help. */
+  function commitSwitchover(value: string) {
+    if (value === "") {
+      void save({ themeSwitchoverAt: null }, "schedule");
+      return;
+    }
+    if (!isSwitchoverTime(value)) {
+      setStatus({
+        tone: "error",
+        message: `Switchover time must be HH:MM between 00:00 and 23:59 (themeSwitchoverAt).`,
+      });
+      return;
+    }
+    void save({ themeSwitchoverAt: value }, "schedule");
+  }
+
   /**
    * A chosen file goes to the cropper first, unless cropping it would destroy
    * it: drawing a GIF to a canvas keeps one frame and drops the animation, so
    * animated files are uploaded exactly as they are (R12).
    */
-  function chooseFile(kind: AssetKind, file: File) {
+  function chooseFile(kind: AssetKind, file: File, appearance?: Appearance) {
     setStatus(null);
     if (shouldCrop(file.type)) {
-      setPending({ kind, file });
+      setPending({ kind, file, appearance });
       return;
     }
-    void (kind === "avatar" ? uploadAvatar(file) : uploadBackground(file));
+    void (kind === "avatar"
+      ? uploadAvatar(file)
+      : uploadBackground(file, appearance));
   }
 
-  function cropped(kind: AssetKind, file: File) {
+  function cropped(kind: AssetKind, file: File, appearance?: Appearance) {
     setPending(null);
-    void (kind === "avatar" ? uploadAvatar(file) : uploadBackground(file));
+    void (kind === "avatar"
+      ? uploadAvatar(file)
+      : uploadBackground(file, appearance));
   }
 
   async function uploadAvatar(file: File) {
@@ -204,8 +404,7 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
       const form = new FormData();
       form.set("avatar", file);
       const response = await fetch("/api/settings", { method: "POST", body: form });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
+      if (!response.ok) throw new Error(await failureMessage(response));
 
       setStatus({ tone: "ok", message: "Avatar updated." });
       router.refresh();
@@ -223,13 +422,14 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
    * Discards the uploaded background: the stored object and the reference to
    * it both go, and the site returns to a preset.
    */
-  async function removeBackground() {
-    setBusy("remove");
+  /** Clears one slot, or the single background when no appearance is named.
+   *  The server reference-counts the bytes; two slots may share an image. */
+  async function removeBackground(appearance?: Appearance) {
+    setBusy(appearance ? `remove:${appearance}` : "remove");
     setStatus(null);
     try {
-      const response = await fetch("/api/settings/upload", { method: "DELETE" });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
+      const response = await fetch(uploadUrl(appearance), { method: "DELETE" });
+      if (!response.ok) throw new Error(await failureMessage(response));
 
       setUploadedBackgroundName(null);
       setStatus({ tone: "ok", message: "Background removed." });
@@ -254,8 +454,8 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
    * filter, so each repaint re-blurs the screen. Video decodes on the
    * platform's video path and compresses between frames instead.
    */
-  async function uploadBackground(original: File) {
-    setBusy("background");
+  async function uploadBackground(original: File, appearance?: Appearance) {
+    setBusy(appearance ? `background:${appearance}` : "background");
     setStatus(null);
     try {
       // Returns the original unless re-encoding actually produced something
@@ -270,15 +470,13 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
 
       validateAsset("background", file);
 
-      const granted = await fetch("/api/settings/upload", {
+      const granted = await fetch(uploadUrl(appearance), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ type: file.type, size: file.size }),
       });
+      if (!granted.ok) throw new Error(await failureMessage(granted));
       const target = await granted.json();
-      if (!granted.ok) {
-        throw new Error(target?.error ?? `HTTP ${granted.status}`);
-      }
 
       const stored = await fetch(target.signedUrl, {
         method: "PUT",
@@ -289,15 +487,12 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
         throw new Error(`Storage refused the file (HTTP ${stored.status}).`);
       }
 
-      const confirmed = await fetch("/api/settings/upload", {
+      const confirmed = await fetch(uploadUrl(appearance), {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ path: target.path }),
       });
-      const body = await confirmed.json();
-      if (!confirmed.ok) {
-        throw new Error(body?.error ?? `HTTP ${confirmed.status}`);
-      }
+      if (!confirmed.ok) throw new Error(await failureMessage(confirmed));
 
       setStatus({ tone: "ok", message: "Background updated for every visitor." });
       router.refresh();
@@ -325,10 +520,8 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
         method: mode === "check" ? "GET" : "POST",
         cache: "no-store",
       });
-      const body = (await response.json()) as StorageReport & { error?: string };
-      if (!response.ok) {
-        throw new Error(body?.error ?? `HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(await failureMessage(response));
+      const body = (await response.json()) as StorageReport;
 
       setStorage(body);
       setStatus({ tone: body.ok ? "ok" : "error", message: body.message });
@@ -349,8 +542,8 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
     setStatus(null);
     try {
       const response = await fetch(path, { method: "POST" });
+      if (!response.ok) throw new Error(await failureMessage(response));
       const body = await response.json();
-      if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
 
       setStatus({
         tone: "ok",
@@ -380,44 +573,125 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
         <div className={styles.sectionHead}>
           <span className={styles.sectionTitle}>Background</span>
           <span className={styles.sectionNote}>
-            Every visitor sees your choice
+            {paired
+              ? "One wallpaper per appearance"
+              : "Every visitor sees your choice"}
           </span>
         </div>
-        <div className={styles.backgrounds}>
-          {BACKGROUNDS.map((background) => (
-            <button
-              key={background.id}
-              type="button"
-              className={styles.background}
-              style={{ backgroundImage: `url(${background.src})` }}
-              aria-pressed={background.id === settings.backgroundId}
-              aria-label={`Use the ${background.label} background`}
-              disabled={busy !== null}
-              onClick={() => save({ backgroundId: background.id }, "background")}
-            >
-              <span className={styles.backgroundLabel}>{background.label}</span>
-            </button>
-          ))}
 
-          {/* One more entry, not a separate mode — the committed set stays
-              selectable so a bad upload is never a dead end (R11). */}
-          {backgroundUrl ? (
+        {paired ? (
+          APPEARANCES.map((appearance) => (
+            <SlotPicker
+              key={appearance}
+              appearance={appearance}
+              selectedId={settings[BACKGROUND_SLOT_FIELDS[appearance]]}
+              customUrl={backgrounds[appearance].customUrl}
+              disabled={busy !== null}
+              onSelect={(id) =>
+                save(
+                  { [BACKGROUND_SLOT_FIELDS[appearance]]: id },
+                  "background",
+                )
+              }
+              onUpload={() => slotUpload.current[appearance]?.click()}
+              onRemove={() => removeBackground(appearance)}
+              busy={busy}
+            />
+          ))
+        ) : (
+          <div className={styles.backgrounds}>
+            {BACKGROUNDS.map((background) => (
+              <button
+                key={background.id}
+                type="button"
+                className={styles.background}
+                style={{ backgroundImage: `url(${background.src})` }}
+                aria-pressed={background.id === settings.backgroundId}
+                aria-label={`Use the ${background.label} background`}
+                disabled={busy !== null}
+                onClick={() => save({ backgroundId: background.id }, "background")}
+              >
+                <span className={styles.backgroundLabel}>{background.label}</span>
+              </button>
+            ))}
+
+            {/* One more entry, not a separate mode — the committed set stays
+                selectable so a bad upload is never a dead end (R11). */}
+            {backgroundUrl ? (
+              <button
+                type="button"
+                className={styles.background}
+                style={{ backgroundImage: `url(${backgroundUrl})` }}
+                aria-pressed={settings.backgroundId === CUSTOM_BACKGROUND_ID}
+                aria-label="Use your uploaded background"
+                disabled={busy !== null}
+                onClick={() =>
+                  save({ backgroundId: CUSTOM_BACKGROUND_ID }, "background")
+                }
+              >
+                <span className={styles.backgroundLabel}>
+                  {uploadedBackgroundName ?? "Yours"}
+                </span>
+              </button>
+            ) : null}
+          </div>
+        )}
+
+        {/* One input per slot, so a chosen file knows its appearance. */}
+        {APPEARANCES.map((appearance) => (
+          <input
+            key={appearance}
+            ref={(element) => {
+              slotUpload.current[appearance] = element;
+            }}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            aria-label={`Upload a ${appearance} background`}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) chooseFile("background", file, appearance);
+              event.target.value = "";
+            }}
+          />
+        ))}
+
+        <div className={styles.buttonRow}>
+          {paired ? (
             <button
               type="button"
-              className={styles.background}
-              style={{ backgroundImage: `url(${backgroundUrl})` }}
-              aria-pressed={settings.backgroundId === CUSTOM_BACKGROUND_ID}
-              aria-label="Use your uploaded background"
+              className={styles.button}
               disabled={busy !== null}
-              onClick={() =>
-                save({ backgroundId: CUSTOM_BACKGROUND_ID }, "background")
-              }
+              onClick={unpairBackgrounds}
             >
-              <span className={styles.backgroundLabel}>
-                {uploadedBackgroundName ?? "Yours"}
-              </span>
+              Use one background for both
             </button>
-          ) : null}
+          ) : (
+            <button
+              type="button"
+              className={styles.button}
+              disabled={busy !== null}
+              onClick={pairBackgrounds}
+            >
+              Split into a light and dark pair
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.button}
+            aria-pressed={preview !== null}
+            disabled={busy !== null}
+            onClick={() =>
+              setPreview(preview === null ? otherTheme(currentTheme()) : null)
+            }
+          >
+            {preview === null ? "Preview the other appearance" : "End preview"}
+          </button>
+          <span className={styles.sectionNote}>
+            {preview === null
+              ? "Preview swaps the whole appearance for you alone. Visitors see nothing change."
+              : `Showing the ${preview} appearance. Only you, and only until this panel closes.`}
+          </span>
         </div>
 
         <input
@@ -425,6 +699,7 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
           type="file"
           accept="image/*"
           className="sr-only"
+          aria-label="Upload a background"
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) {
@@ -448,9 +723,9 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
             }
             busy={busy !== null}
             onCancel={() => setPending(null)}
-            onCommit={(file) => cropped("background", file)}
+            onCommit={(file) => cropped("background", file, pending.appearance)}
           />
-        ) : (
+        ) : paired ? null : (
           <div className={styles.buttonRow}>
             <button
               type="button"
@@ -467,17 +742,69 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
                 type="button"
                 className={styles.button}
                 disabled={busy !== null}
-                onClick={removeBackground}
+                onClick={() => removeBackground()}
               >
                 {busy === "remove" ? "Removing…" : "Remove"}
               </button>
             ) : null}
             <span className={styles.sectionNote}>
               Cropped to 16:9. An animated file is re-encoded to a small looping
-              video first.
+              video first. Animation is the single-background option only — a
+              pair swaps by stylesheet, and a stylesheet cannot swap a video
+              element in.
             </span>
           </div>
         )}
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionHead}>
+          <span className={styles.sectionTitle}>Appearance schedule</span>
+          <span className={styles.sectionNote}>
+            On each reader&rsquo;s own clock
+          </span>
+        </div>
+        <div className={styles.scheduleRow}>
+          <input
+            // Keyed on the stored value so a change made elsewhere replaces
+            // what is on screen after a refresh, rather than leaving a
+            // mount-time copy sitting there looking current.
+            key={settings.themeSwitchoverAt ?? "unset"}
+            className={styles.timeInput}
+            type="time"
+            defaultValue={settings.themeSwitchoverAt ?? ""}
+            aria-label="Switchover time"
+            disabled={busy !== null}
+            onChange={(event) => commitSwitchover(event.target.value)}
+          />
+          <select
+            className={styles.select}
+            value={settings.themeSwitchoverTo}
+            aria-label="Appearance after the switchover"
+            disabled={busy !== null}
+            onChange={(event) =>
+              save({ themeSwitchoverTo: event.target.value as Appearance }, "schedule")
+            }
+          >
+            <option value="dark">turns dark</option>
+            <option value="light">turns light</option>
+          </select>
+          {settings.themeSwitchoverAt ? (
+            <button
+              type="button"
+              className={styles.button}
+              disabled={busy !== null}
+              onClick={() => commitSwitchover("")}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+        <span className={styles.sectionNote}>
+          {settings.themeSwitchoverAt
+            ? `${settings.themeSwitchoverAt} until midnight is ${settings.themeSwitchoverTo}; the rest of the day is ${settings.themeSwitchoverTo === "dark" ? "light" : "dark"}. A reader who presses the theme toggle keeps their own choice from then on.`
+            : "No schedule. Readers follow their operating system until they choose otherwise."}
+        </span>
       </section>
 
       <section className={styles.section}>

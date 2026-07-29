@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { GlassSurface } from "@/components/glass/GlassSurface";
 import { REGISTRY, visibleWidgets } from "@/lib/registry";
-import { backgroundById } from "@/lib/theme/backgrounds";
+import { backgroundById, hasBackgroundPair } from "@/lib/theme/backgrounds";
 import type { NowPlaying as NowPlayingValue } from "@/widgets/music/server/now";
 import { Sidebar } from "./Sidebar";
 import { SiteProvider, type SiteContextValue } from "./SiteContext";
@@ -34,10 +34,18 @@ export function Shell({
   );
 
   const store = useOpenWidget(registry);
-  const background = backgroundById(
+
+  // Which *element* the wallpaper needs, decided once from server settings.
+  // Which *image* it shows is a theme token the cascade swaps (R13). A video
+  // is the single-background option only, so validation keeps these in step.
+  const single = backgroundById(
     site.settings.backgroundId,
-    site.backgroundUrl,
+    site.backgrounds.single.customUrl,
   );
+  const video =
+    !hasBackgroundPair(site.backgrounds) && single.kind === "video"
+      ? single
+      : null;
 
   /*
    * Reduced motion stops the wallpaper on its first frame (R9).
@@ -49,19 +57,19 @@ export function Shell({
    */
   const backgroundVideo = useRef<HTMLVideoElement>(null);
   useEffect(() => {
-    const video = backgroundVideo.current;
-    if (!video) return;
+    const element = backgroundVideo.current;
+    if (!element) return;
 
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
     const apply = () => {
-      if (query.matches) video.pause();
-      else void video.play().catch(() => {});
+      if (query.matches) element.pause();
+      else void element.play().catch(() => {});
     };
 
     apply();
     query.addEventListener("change", apply);
     return () => query.removeEventListener("change", apply);
-  }, [background.src]);
+  }, [video?.src]);
 
   return (
     <SiteProvider value={site}>
@@ -72,11 +80,11 @@ export function Shell({
         site's one backdrop filter, so each repaint re-blurs the screen (R3).
         Uploads are re-encoded to video before they are stored.
       */}
-      {background.kind === "video" ? (
+      {video ? (
         <video
           ref={backgroundVideo}
           className={styles.background}
-          src={background.src}
+          src={video.src}
           autoPlay
           loop
           muted
@@ -86,11 +94,9 @@ export function Shell({
           tabIndex={-1}
         />
       ) : (
-        <div
-          className={styles.background}
-          style={{ backgroundImage: `url(${background.src})` }}
-          aria-hidden="true"
-        />
+        // No inline background-image — it would beat the class rule's
+        // var(--bg-image) and shadow the token silently.
+        <div className={styles.background} aria-hidden="true" />
       )}
       {/*
         One frame holds the whole desktop (R1). It is the only surface that

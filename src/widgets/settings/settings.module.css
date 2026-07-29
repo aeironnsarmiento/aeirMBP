@@ -71,6 +71,63 @@
   text-align: left;
 }
 
+/* --- The background pair (R8) ---------------------------------------------- */
+
+/* One block per appearance. Bordered rather than tinted: a new translucent
+   surface here would be a second place glass is declared, and the cardinal
+   rule keeps that in tokens.css with GlassSurface as its only applier. */
+.slot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding: var(--gap-sm);
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-md);
+}
+
+.slotHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--gap-sm);
+}
+
+.slotLabel {
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* --- The appearance schedule (R9) ------------------------------------------ */
+
+.scheduleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.timeInput,
+.select {
+  padding: 6px 10px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-sm);
+  background: var(--glass-surface-weak);
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+
+.timeInput:focus-visible,
+.select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.timeInput:disabled,
+.select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* --- Opacity -------------------------------------------------------------- */
 
 .sliderRow {

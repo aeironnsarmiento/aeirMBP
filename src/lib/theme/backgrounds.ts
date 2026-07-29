@@ -9,7 +9,7 @@ export type Background = {
 };
 
 /** The stored path is the only signal; storage does not hand back a MIME type. */
-function kindFor(url: string): "image" | "video" {
+export function backgroundKind(url: string): "image" | "video" {
   return /\.(mp4|webm)(\?|$)/i.test(url) ? "video" : "image";
 }
 
@@ -59,6 +59,19 @@ function defaultBackground(): Background {
 }
 
 /**
+ * The preset an unset slot falls back to (R8), and the first consumer of
+ * `mood`. The global default is dark-mood, so falling back to it would hand a
+ * light slot a dark image — the complaint the pair exists to answer. Four dark
+ * presets, one light, so the light fallback has exactly one candidate.
+ */
+export function presetForMood(mood: "light" | "dark"): Background {
+  return (
+    BACKGROUNDS.find((background) => background.mood === mood) ??
+    defaultBackground()
+  );
+}
+
+/**
  * Resolves the selected id to something renderable.
  *
  * `customUrl` is passed in rather than derived, because resolving a stored
@@ -77,7 +90,7 @@ export function backgroundById(
           label: "Yours",
           src: customUrl,
           mood: "dark",
-          kind: kindFor(customUrl),
+          kind: backgroundKind(customUrl),
         }
       : defaultBackground();
   }
@@ -85,4 +98,41 @@ export function backgroundById(
   return (
     BACKGROUNDS.find((background) => background.id === id) ?? defaultBackground()
   );
+}
+
+/** Uploads already resolved to URLs: that needs the storage module, and this
+ *  one is imported by client components. */
+export type BackgroundSlots = {
+  /** The single background. Covers whichever per-mode slots are unset. */
+  single: { id: string; customUrl: string | null };
+  light: { id: string | null; customUrl: string | null };
+  dark: { id: string | null; customUrl: string | null };
+};
+
+/** Whether the owner has attached per-mode backgrounds at all. */
+export function hasBackgroundPair(slots: BackgroundSlots): boolean {
+  return slots.light.id !== null || slots.dark.id !== null;
+}
+
+/**
+ * The background for a resolved appearance (R8), in three states:
+ *
+ *   1. Slot set — use it.
+ *   2. Neither slot set — the single background covers both, so switching
+ *      changes no wallpaper (AE2). Also what a pre-pair owner has.
+ *   3. This slot unset, the other set — the owner emptied half a pair, so a
+ *      mood-matched preset fills the gap rather than the dark default (AE3).
+ */
+export function backgroundForAppearance(
+  appearance: "light" | "dark",
+  slots: BackgroundSlots,
+): Background {
+  const slot = slots[appearance];
+  if (slot.id !== null) return backgroundById(slot.id, slot.customUrl);
+
+  if (!hasBackgroundPair(slots)) {
+    return backgroundById(slots.single.id, slots.single.customUrl);
+  }
+
+  return presetForMood(appearance);
 }
