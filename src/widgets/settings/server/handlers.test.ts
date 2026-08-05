@@ -211,19 +211,6 @@ describe("glass opacity (R14, R15)", () => {
   });
 });
 
-describe("scope", () => {
-  it("ignores About fields, which the About handler owns", async () => {
-    const { handleSettingsUpdate } = await import("./handlers");
-    await asOwner();
-
-    await handleSettingsUpdate(post({ aboutCopy: "written via settings" }));
-
-    expect((await readSiteSettings(db)).aboutCopy).toBe(
-      DEFAULT_SITE_SETTINGS.aboutCopy,
-    );
-  });
-});
-
 function jsonRequest(method: string, body: unknown) {
   return new Request("https://example.test/api/settings/upload", {
     method,

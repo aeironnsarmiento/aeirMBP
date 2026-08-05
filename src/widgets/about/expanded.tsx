@@ -1,60 +1,23 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { GlassSurface } from "@/components/glass/GlassSurface";
 import { useSite } from "@/components/shell/SiteContext";
-import { failureMessage } from "@/lib/http/rejection";
-import type { WidgetExpandedProps } from "@/lib/registry/types";
-import type { SiteLink, SiteSettings } from "@/lib/site/schema";
+import { PROFILE } from "@/lib/site/profile";
 import { initialsFor } from "@/widgets/music/format";
 import styles from "./about.module.css";
 
 /**
  * The site's default view (R4).
  *
- * Renders the owner's identity and copy for everyone, and an editing form for
- * the owner (R17, R19). Both read the same server-resolved settings, so a save
- * followed by a router refresh is all it takes for a visitor to see the change.
+ * Renders the owner's identity and copy for everyone, from Committed Content
+ * rather than from stored settings — so it reads the same for a visitor and
+ * the owner, and it is unaffected by the database being unreachable. The
+ * avatar still comes from site settings, because it is an uploaded asset.
  */
-export function AboutExpanded({ params, setParam }: WidgetExpandedProps) {
-  const { settings, avatarUrl, isOwner } = useSite();
-  // Edit mode lives in the open-widget store like every other view state (R13),
-  // which is also what lets Settings open About straight into it.
-  const editing = isOwner && params.edit === "1";
+export function AboutExpanded() {
+  const { avatarUrl } = useSite();
 
-  return (
-    <div>
-      {isOwner ? (
-        <div className={styles.ownerBar}>
-          <span className={styles.ownerTag}>Owner</span>
-          <button
-            type="button"
-            className={styles.link}
-            onClick={() => setParam("edit", editing ? "0" : "1")}
-          >
-            {editing ? "Done editing" : "Edit About"}
-          </button>
-        </div>
-      ) : null}
-
-      {editing ? (
-        <AboutForm settings={settings} onDone={() => setParam("edit", "0")} />
-      ) : (
-        <AboutView settings={settings} avatarUrl={avatarUrl} />
-      )}
-    </div>
-  );
-}
-
-function AboutView({
-  settings,
-  avatarUrl,
-}: {
-  settings: SiteSettings;
-  avatarUrl: string | null;
-}) {
-  const paragraphs = settings.aboutCopy
+  const paragraphs = PROFILE.aboutCopy
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean);
@@ -62,12 +25,12 @@ function AboutView({
   return (
     <div className={styles.about}>
       <div className={styles.identity}>
-        <Avatar url={avatarUrl} name={settings.name} />
-        <h3 className={styles.name}>{settings.name || "Unnamed"}</h3>
-        {settings.handle ? (
-          <span className={styles.handle}>@{settings.handle}</span>
+        <Avatar url={avatarUrl} name={PROFILE.name} />
+        <h3 className={styles.name}>{PROFILE.name}</h3>
+        {PROFILE.handle ? (
+          <span className={styles.handle}>@{PROFILE.handle}</span>
         ) : null}
-        {settings.location ? (
+        {PROFILE.location ? (
           <span className={styles.location}>
             <svg
               width="11"
@@ -81,7 +44,7 @@ function AboutView({
               <path d="M6 11S2 7.6 2 5a4 4 0 1 1 8 0c0 2.6-4 6-4 6Z" />
               <circle cx="6" cy="5" r="1.3" />
             </svg>
-            {settings.location}
+            {PROFILE.location}
           </span>
         ) : null}
       </div>
@@ -97,9 +60,9 @@ function AboutView({
           )}
         </div>
 
-        {settings.links.length > 0 ? (
+        {PROFILE.links.length > 0 ? (
           <div className={styles.links}>
-            {settings.links.map((link) => (
+            {PROFILE.links.map((link) => (
               <GlassSurface
                 key={`${link.label}-${link.href}`}
                 as="a"
@@ -136,186 +99,11 @@ function AboutView({
 function Avatar({ url, name }: { url: string | null; name: string }) {
   return (
     <div className={styles.avatar}>
-      {initialsFor(name || "?")}
+      {initialsFor(name)}
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element -- avoids the metered image optimizer
         <img className={styles.avatarImage} src={url} alt={name} />
       ) : null}
     </div>
-  );
-}
-
-/** `label|https://url` per line — an array editor for two links is overbuilt. */
-function linksToText(links: readonly SiteLink[]): string {
-  return links.map((link) => `${link.label}|${link.href}`).join("\n");
-}
-
-function textToLinks(text: string): SiteLink[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const separator = line.indexOf("|");
-      if (separator === -1) return { label: line, href: line };
-      return {
-        label: line.slice(0, separator).trim(),
-        href: line.slice(separator + 1).trim(),
-      };
-    });
-}
-
-function AboutForm({
-  settings,
-  onDone,
-}: {
-  settings: SiteSettings;
-  onDone: () => void;
-}) {
-  const router = useRouter();
-  const [draft, setDraft] = useState({
-    name: settings.name,
-    handle: settings.handle,
-    location: settings.location,
-    aboutCopy: settings.aboutCopy,
-    links: linksToText(settings.links),
-  });
-  const [status, setStatus] = useState<{ tone: string; message: string } | null>(
-    null,
-  );
-  const [saving, setSaving] = useState(false);
-
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    setStatus(null);
-
-    try {
-      const response = await fetch("/api/about", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: draft.name,
-          handle: draft.handle,
-          location: draft.location,
-          aboutCopy: draft.aboutCopy,
-          links: textToLinks(draft.links),
-        }),
-      });
-
-      if (!response.ok) throw new Error(await failureMessage(response));
-
-      setStatus({ tone: "ok", message: "Saved." });
-      // The shell resolves settings server-side, so a refresh is what makes the
-      // change visible without a redeploy.
-      router.refresh();
-      onDone();
-    } catch (error) {
-      setStatus({
-        tone: "error",
-        message: error instanceof Error ? error.message : "Could not save.",
-      });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form className={styles.form} onSubmit={save}>
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="about-name">
-          Name
-        </label>
-        <input
-          id="about-name"
-          className={styles.input}
-          value={draft.name}
-          onChange={(event) =>
-            setDraft((value) => ({ ...value, name: event.target.value }))
-          }
-        />
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="about-handle">
-          Handle
-        </label>
-        <input
-          id="about-handle"
-          className={styles.input}
-          value={draft.handle}
-          onChange={(event) =>
-            setDraft((value) => ({ ...value, handle: event.target.value }))
-          }
-        />
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="about-location">
-          Location
-        </label>
-        <input
-          id="about-location"
-          className={styles.input}
-          value={draft.location}
-          onChange={(event) =>
-            setDraft((value) => ({ ...value, location: event.target.value }))
-          }
-        />
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="about-copy">
-          Bio
-        </label>
-        <textarea
-          id="about-copy"
-          className={styles.textarea}
-          value={draft.aboutCopy}
-          onChange={(event) =>
-            setDraft((value) => ({ ...value, aboutCopy: event.target.value }))
-          }
-        />
-        <span className={styles.hint}>Blank lines separate paragraphs.</span>
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="about-links">
-          Links
-        </label>
-        <textarea
-          id="about-links"
-          className={styles.textarea}
-          value={draft.links}
-          onChange={(event) =>
-            setDraft((value) => ({ ...value, links: event.target.value }))
-          }
-        />
-        <span className={styles.hint}>
-          One per line, as <code>label|https://url</code>.
-        </span>
-      </div>
-
-      <div className={styles.actions}>
-        <GlassSurface
-          as="button"
-          tone="well"
-          interactive
-          className={styles.link}
-          type="submit"
-          disabled={saving}
-        >
-          {saving ? "Saving…" : "Save"}
-        </GlassSurface>
-        <button type="button" className={styles.link} onClick={onDone}>
-          Cancel
-        </button>
-        {status ? (
-          <span className={styles.status} data-tone={status.tone}>
-            {status.message}
-          </span>
-        ) : null}
-      </div>
-    </form>
   );
 }

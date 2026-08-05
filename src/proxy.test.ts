@@ -60,7 +60,7 @@ describe("refusing an owner-only path (AE5)", () => {
 
   it("answers every covered path identically", async () => {
     const prints = await Promise.all(
-      ["/api/settings", "/api/about", "/api/music/backfill", "/api/music/enrich"].map(
+      ["/api/settings", "/api/music/backfill", "/api/music/enrich"].map(
         async (path) => {
           const response = await proxy(request(undefined, path));
           return { status: response.status, body: await response.text() };

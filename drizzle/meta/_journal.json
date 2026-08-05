@@ -36,6 +36,13 @@
       "when": 1785100362544,
       "tag": "0004_revoke_public_api_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785906000000,
+      "tag": "0005_drop_about_settings",
+      "breakpoints": true
     }
   ]
 }

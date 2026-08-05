@@ -39,7 +39,6 @@ async function sessionFault(request: NextRequest): Promise<OwnerFault | null> {
 export const config = {
   matcher: [
     "/api/settings/:path*",
-    "/api/about/:path*",
     "/api/music/backfill/:path*",
     "/api/music/enrich/:path*",
   ],

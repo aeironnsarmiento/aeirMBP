@@ -234,7 +234,6 @@ export function WidgetGrid({
                   setSubView={store.setSubView}
                   params={store.state.params}
                   setParam={store.setParam}
-                  openWidget={store.open}
                 />
               ) : (
                 <Compact onExpand={() => store.open(manifest.id)} />

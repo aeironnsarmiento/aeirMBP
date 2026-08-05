@@ -2,6 +2,7 @@
 
 import { GlassSurface } from "@/components/glass/GlassSurface";
 import type { Registry } from "@/lib/registry/types";
+import { PROFILE } from "@/lib/site/profile";
 import { initialsFor } from "@/widgets/music/format";
 import { useSite } from "./SiteContext";
 import styles from "./shell.module.css";
@@ -22,7 +23,7 @@ export function Sidebar({
   openWidgetId: string | null;
   onOpen: (id: string) => void;
 }) {
-  const { settings, avatarUrl } = useSite();
+  const { avatarUrl } = useSite();
 
   return (
     <GlassSurface
@@ -35,15 +36,15 @@ export function Sidebar({
     >
       <div className={styles.profile}>
         <div className={styles.avatar}>
-          {initialsFor(settings.name || "?")}
+          {initialsFor(PROFILE.name)}
           {avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- avoids the metered image optimizer
             <img className={styles.avatarImage} src={avatarUrl} alt="" />
           ) : null}
         </div>
         <div className={styles.profileMeta}>
-          <div className={styles.profileName}>{settings.name || "xenavalon"}</div>
-          <div className={styles.profileHandle}>@{settings.handle}</div>
+          <div className={styles.profileName}>{PROFILE.name}</div>
+          <div className={styles.profileHandle}>@{PROFILE.handle}</div>
         </div>
       </div>
 

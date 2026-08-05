@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { GlassSurface } from "@/components/glass/GlassSurface";
 import { ThemeToggle } from "@/components/glass/ThemeToggle";
 import { recomputeTheme } from "@/components/glass/useTheme";
+import { PROFILE } from "@/lib/site/profile";
 import type { NowPlaying as NowPlayingValue } from "@/widgets/music/server/now";
 import { NowPlaying } from "./NowPlaying";
 import { useSite } from "./SiteContext";
@@ -11,11 +12,11 @@ import { afterTransitions } from "./useOpenWidget";
 import styles from "./shell.module.css";
 
 export function TopBar({ nowPlaying }: { nowPlaying: NowPlayingValue | null }) {
-  const { settings, isOwner } = useSite();
+  const { isOwner } = useSite();
 
   return (
     <GlassSurface as="header" className={styles.topbar}>
-      <span className={styles.brand}>@{settings.handle}</span>
+      <span className={styles.brand}>@{PROFILE.handle}</span>
       <NowPlaying initial={nowPlaying} />
       <div className={styles.spacer} />
       <Clock />

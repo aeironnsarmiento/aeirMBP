@@ -28,17 +28,6 @@ export type WidgetExpandedProps = {
    */
   params: Readonly<Record<string, string>>;
   setParam: (key: string, value: string) => void;
-  /**
-   * Expands another widget.
-   *
-   * A shell capability, not a widget-to-widget dependency: the caller passes an
-   * id string, never an import. This is how Settings surfaces About's own
-   * editor rather than growing a second copy of it.
-   */
-  openWidget: (
-    id: string,
-    options?: { subView?: string; params?: Record<string, string> },
-  ) => void;
 };
 
 /**

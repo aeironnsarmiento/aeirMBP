@@ -16,7 +16,7 @@ import {
 } from "@/components/glass/useTheme";
 import { failureMessage } from "@/lib/http/rejection";
 import { transcodeAnimation } from "@/lib/media/transcodeAnimation";
-import type { WidgetExpandedProps } from "@/lib/registry/types";
+import { PROFILE } from "@/lib/site/profile";
 import {
   APPEARANCES,
   ASSET_RULES,
@@ -250,7 +250,7 @@ function SlotPicker({
  * widget, not a separate page — which is what keeps the site one place rather
  * than a site plus an admin panel.
  */
-export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
+export function SettingsExpanded() {
   const router = useRouter();
   const { settings, avatarUrl, backgrounds } = useSite();
   const backgroundUrl = backgrounds.single.customUrl;
@@ -866,7 +866,7 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
         ) : (
           <div className={styles.avatarRow}>
             <div className={styles.avatarPreview}>
-              {initialsFor(settings.name || "?")}
+              {initialsFor(PROFILE.name)}
               {avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element -- avoids the metered image optimizer
                 <img className={styles.avatarImage} src={avatarUrl} alt="" />
@@ -914,22 +914,6 @@ export function SettingsExpanded({ openWidget }: WidgetExpandedProps) {
               {storage.fault === "bucket" ? "Create the bucket" : "Fix the bucket"}
             </button>
           ) : null}
-        </div>
-      </section>
-
-      <section className={styles.section}>
-        <div className={styles.sectionHead}>
-          <span className={styles.sectionTitle}>About</span>
-        </div>
-        <div className={styles.buttonRow}>
-          <button
-            type="button"
-            className={styles.button}
-            // Opens About's own editor rather than growing a second copy of it.
-            onClick={() => openWidget("about", { params: { edit: "1" } })}
-          >
-            Edit bio, links and handle
-          </button>
         </div>
       </section>
 

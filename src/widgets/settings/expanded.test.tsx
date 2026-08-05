@@ -54,13 +54,7 @@ function panel(overrides: Partial<SiteSettings> = {}, urls = {}) {
         isOwner: true,
       })}
     >
-      <SettingsExpanded
-        params={{}}
-        setParam={vi.fn()}
-        openWidget={vi.fn()}
-        subView={null}
-        setSubView={vi.fn()}
-      />
+      <SettingsExpanded />
     </SiteProvider>
   );
 }
