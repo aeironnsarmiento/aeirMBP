@@ -77,7 +77,6 @@
 .summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  justify-items: center;
   gap: var(--gap-sm);
   margin-bottom: var(--gap-lg);
 }
@@ -85,8 +84,6 @@
 .stat {
   padding: var(--gap-sm) var(--gap-md);
   border-radius: var(--radius-md);
-  width: fit-content;
-  max-width: 100%;
 }
 
 .statValue {
