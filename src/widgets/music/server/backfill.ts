@@ -2,33 +2,14 @@ import { MAX_PAGE_SIZE, getRecentTracks, type RecentTracksPage } from "../lastfm
 import { ingestPlays } from "./ingest";
 import { createDrizzleStore, type MusicStore } from "./store";
 
-/**
- * One-time import of the owner's full last.fm history (R20).
- *
- * Two properties matter more than speed:
- *
- * - **Resumable.** ~37 pages at the current history size, and the sweep grows
- *   with the account. A serverless invocation will time out before the import
- *   finishes eventually, so each run processes a bounded batch and advances a
- *   stored cursor (KTD8). Interrupting it loses nothing.
- * - **Pinned window.** The cursor records an upper timestamp bound taken when
- *   the import started, and every page request carries it. Without that, a
- *   scrobble landing mid-import shifts every subsequent page by one and the
- *   run silently skips a play.
- */
-
 export const PAGES_PER_RUN = 5;
 
-/** ~4 requests/second. last.fm does not publish its ceiling; this stays well under it. */
 export const REQUEST_INTERVAL_MS = 250;
 
 export type BackfillCursor = {
-  /** Upper bound in epoch seconds, fixed when the import started. */
   to: number;
-  /** Next page to fetch. Pages run newest-first within the pinned window. */
   page: number;
   totalPages: number | null;
-  /** Scrobbles inserted across every run of this import. */
   inserted: number;
   startedAt: string;
 };
@@ -37,9 +18,7 @@ export type BackfillProgress = {
   done: boolean;
   page: number;
   totalPages: number | null;
-  /** Inserted by this run. */
   insertedThisRun: number;
-  /** Inserted across the whole import. */
   insertedTotal: number;
   pagesFetched: number;
 };
@@ -55,7 +34,6 @@ export type BackfillDeps = {
   now?: () => Date;
   pagesPerRun?: number;
   requestIntervalMs?: number;
-  /** Discards any stored cursor and imports from the beginning. */
   restart?: boolean;
 };
 
@@ -94,7 +72,6 @@ export async function runBackfill({
         startedAt: startedAt.toISOString(),
       };
 
-  // Already finished, and re-triggering must stay free (no requests, no rows).
   if (cursor.totalPages !== null && cursor.page > cursor.totalPages) {
     return {
       done: true,
@@ -132,8 +109,6 @@ export async function runBackfill({
       const ingested = await ingestPlays(store, result.plays);
       insertedThisRun += ingested.inserted;
 
-      // The cursor advances only after this page's rows are committed, so an
-      // interruption between the two re-fetches the page rather than skipping it.
       cursor = {
         ...cursor,
         page: cursor.page + 1,
@@ -170,7 +145,6 @@ export async function runBackfill({
   };
 }
 
-/** Progress for the Settings widget, without running anything. */
 export async function readBackfillProgress(
   store: MusicStore = createDrizzleStore(),
 ) {

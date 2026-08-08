@@ -1,30 +1,14 @@
 import { createDrizzleStore, type MusicStore } from "../server/store";
 import { lookupArtistPicture } from "./deezer";
 
-/**
- * Resolves a portrait for each unique artist.
- *
- * Separate from the track sweep rather than folded into it: a track needs two
- * fields from a chain of two sources, an artist needs one field from one. The
- * shared parts are the parts that matter — keyed on the normalized identity,
- * looked up once, and never refreshed, so the API cost stays bounded.
- *
- * Chunked and resumable for the same reason the track sweep is: a few hundred
- * artists at Deezer's rate floor outlasts a serverless invocation, and the
- * store's own filter is the cursor.
- */
-
 export const ARTIST_BATCH_SIZE = 40;
 
-/** Deezer publishes 50 requests / 5 seconds. This stays far under it. */
 const MIN_INTERVAL_MS = 200;
 
 export type ArtistSweepResult = {
   processed: number;
   enriched: number;
-  /** Artists Deezer had no entry for. Marked attempted so they are not retried. */
   missed: number;
-  /** Artists left pending because the lookup failed transiently. */
   deferred: number;
   remaining: number;
   done: boolean;
@@ -61,9 +45,6 @@ export async function runArtistSweep({
     try {
       picture = await lookup(artist.artistName);
     } catch {
-      // Leaving the artist pending is the point: marking it attempted after a
-      // transient outage would permanently strand it on the initials tile with
-      // nothing to indicate why.
       deferred += 1;
       continue;
     }
@@ -94,32 +75,11 @@ export async function runArtistSweep({
 }
 
 export type DrainDeps = ArtistSweepDeps & {
-  /** Milliseconds the drain may spend, measured from `startedAt`. */
   budgetMs?: number;
-  /** When the caller's clock started — the request, not this call. */
   startedAt?: number;
   now?: () => number;
 };
 
-/**
- * Runs batches until the work list empties or the budget runs out.
- *
- * One batch per owner click meant the owner had to know how many clicks "done"
- * was, and stopping early left artists on an album sleeve where a portrait
- * belongs with nothing on screen to say why. The sweep was already resumable,
- * so this is a loop around it rather than a change to it: a run cut short by
- * the budget resumes exactly where it stopped.
- *
- * `startedAt` is the caller's clock rather than this function's, because the
- * track sweep runs first in the same serverless invocation and spends the same
- * ceiling. Measuring from here would let the two together exceed it.
- *
- * Three ways out, and the third is the one that matters: a batch where every
- * artist deferred means the provider is failing, and those artists are
- * deliberately left un-attempted so a later run retries them. Looping on that
- * would spin against a dead provider for the whole budget, accomplishing
- * nothing and recording nothing.
- */
 export async function drainArtistSweep({
   budgetMs = Infinity,
   startedAt,

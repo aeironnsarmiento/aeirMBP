@@ -8,13 +8,6 @@ import {
   type TimeRange,
 } from "../queries/aggregations";
 
-/**
- * Read handler for the music widget's aggregate surfaces.
- *
- * Mounted at `app/api/music/route.ts` (KTD2). Every branch reads local storage
- * only, so these responses are unaffected by last.fm being unreachable (AE8).
- */
-
 export const MUSIC_SUB_VIEWS = ["recent", "artists", "albums", "tracks"] as const;
 export type MusicSubView = (typeof MUSIC_SUB_VIEWS)[number];
 
@@ -40,22 +33,18 @@ export async function handleMusicRead(request: Request): Promise<Response> {
 
   const range: TimeRange = isTimeRange(rangeParam) ? rangeParam : "week";
 
-  // A short cache: these change at most once a day via the cron, and the
-  // freshness-critical surfaces are served by /api/music/now instead.
   const headers = { "cache-control": "public, max-age=60, s-maxage=300" };
 
   try {
-    // Concurrent, not sequential: the summary does not depend on the view, and
-    // awaiting them in turn spent two round trips to the pooler where one
-    // would do.
     const [payload, totals] = await Promise.all([
       readView(view, range, limit),
       summary(),
     ]);
     return Response.json({ ...payload, summary: totals }, { headers });
   } catch (error) {
+    console.error("music-read-failed", error);
     return Response.json(
-      { error: error instanceof Error ? error.message : "music-read-failed" },
+      { error: "music-read-failed" },
       { status: 500, headers: { "cache-control": "no-store" } },
     );
   }

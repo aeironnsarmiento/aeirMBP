@@ -1,35 +1,7 @@
-/*
- * Every theme value the site uses is a custom property declared here (R11).
- * Nothing below is read by component logic — a theme change is a value swap on
- * the document root, never a re-render.
- *
- * Three layers, in this order:
- *   1. :root                                  light values (the base)
- *   2. @media (prefers-color-scheme: dark)    OS preference, no stored override
- *   3. :root[data-theme="light" | "dark"]     explicit visitor override (R9)
- *
- * The attribute selectors carry higher specificity than the bare :root inside
- * the media query, so an explicit choice wins in both directions. When a
- * visitor has expressed no preference the attribute is absent and the media
- * query stays live, so a mid-session OS change is followed without JS.
- */
-
 :root {
   color-scheme: light dark;
-
-  /* --- Owner-authored identity (server-supplied, set inline on :root) ------ */
-  /* Two dials, not one (R14). The split follows the blur-depth boundary that
-     GlassSurface already writes, so the frame and the panes inside it are
-     independently tunable without any component reading either value. */
   --glass-alpha-frame: 0.55;
   --glass-alpha-pane: 0.55;
-  /* The wallpaper is a theme token, published per layer by ThemeVars so the
-     resolved appearance selects it by cascade rather than by React (R13).
-     This bare root is also the light layer; the two below it are the OS
-     preference and the explicit override. A declaration is needed in all
-     three, because a reader with no stored choice and no schedule never gets
-     a data-theme attribute and reaches the wallpaper through the media query
-     alone (R12). Nothing reads these in JavaScript. */
   --bg-image: none;
   --bg-position: center;
 
@@ -40,8 +12,6 @@
 
   /* The frame. */
   --glass-surface: rgb(var(--glass-tint) / var(--glass-alpha-frame));
-  /* Everything inside it. Strong and weak are pane-relative, because every
-     surface that asks for them sits inside the frame. */
   --glass-surface-pane: rgb(var(--glass-tint) / var(--glass-alpha-pane));
   --glass-surface-strong: rgb(
     var(--glass-tint) / clamp(0, calc(var(--glass-alpha-pane) + 0.18), 1)
@@ -51,8 +21,6 @@
   );
 
   --glass-border: rgb(255 255 255 / 0.5);
-  /* Interior hairlines — dividers, chips, pill groups. Ink-based rather than
-     white, because a white line on a light glass surface is invisible. */
   --glass-border-quiet: rgb(15 23 42 / 0.14);
   --glass-edge: inset 0 1px 0 rgb(255 255 255 / 0.6),
     inset 0 -1px 0 rgb(0 0 0 / 0.04);
@@ -94,36 +62,8 @@
   /* --- Motion ------------------------------------------------------------- */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  /*
-   * For transforms large enough to watch. `--ease-out` is an easeOutQuint: it
-   * is 40% of the way through the distance at 10% of the time and 96% at the
-   * halfway point, which is what a 2px hover lift wants — the eye reads the
-   * end state, not the travel. Put a card's full expansion on that curve and
-   * the move is over before it registers, however long the duration, which
-   * reads as a pop rather than a movement.
-   *
-   * Material's standard curve spends the distance across the whole duration
-   * instead (3% / 13% / 37% / 78% at the same marks). Its emphasized curve was
-   * the other candidate and is the one Material names for large transforms,
-   * but it front-loads harder (16% / 50% / 69% / 88%), and here that trades
-   * against the cross-fade below: the sooner the box grows, the larger the
-   * outgoing snapshot has stretched by the time it fades out. Measured, that
-   * is 1.72x on emphasized against 1.48x on standard, so standard wins on the
-   * symptom this is tuned for.
-   */
   --ease-transform: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /*
-   * The view transition's cross-fade, deliberately not `--dur-fast`.
-   *
-   * It is not tuned for legibility like every other duration here — it is
-   * tuned to be over before the outgoing snapshot has visibly grown. That
-   * snapshot is stretched to a group box on its way to roughly double the
-   * height, so however long it stays on screen is how long the old card
-   * appears to lunge forward. At 130ms it reaches 1.48x before it clears; at
-   * 90ms it is gone by about 1.15x, and the remaining ~80% of the growth is
-   * the clean resize the motion is actually about.
-   */
   --dur-vt-fade: 90ms;
   --dur-fast: 130ms;
   --dur: 240ms;
@@ -156,19 +96,11 @@
 }
 
 :root[data-theme="light"] {
-  /* Narrowed from the `light dark` on the bare root (R17). Left wide, the
-     browser paints its own widgets from the OS preference, so a reader who
-     explicitly chose light on a dark machine got dark form controls inside a
-     light page — and every button the site does not paint a background onto
-     came out dark too. This is the only place the property appears besides
-     that root declaration. */
   color-scheme: light;
   --bg-image: none;
   --glass-tint: 255 255 255;
 
   --glass-border: rgb(255 255 255 / 0.5);
-  /* Interior hairlines — dividers, chips, pill groups. Ink-based rather than
-     white, because a white line on a light glass surface is invisible. */
   --glass-border-quiet: rgb(15 23 42 / 0.14);
   --glass-edge: inset 0 1px 0 rgb(255 255 255 / 0.6),
     inset 0 -1px 0 rgb(0 0 0 / 0.04);
@@ -223,17 +155,10 @@
   color: var(--ink);
 }
 
-/*
- * The only place backdrop-filter is declared. `data-blur` is written by
- * GlassSurface and is "off" for any surface nested past the depth ceiling, so
- * the bound is enforced in one place and is inspectable in the DOM (R3).
- */
 .glass[data-blur="on"] {
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
-/* A nested surface cannot blur, so it leans on tint contrast instead — at the
-   owner's pane opacity rather than the frame's (R14). */
 .glass[data-blur="off"] {
   background: var(--glass-surface-pane);
   box-shadow: var(--glass-edge);
@@ -268,12 +193,6 @@
   transform: translateY(0);
 }
 
-/*
- * Inside the frame there is no shadow to lift off (R2), so hover reads as a
- * tint change instead of elevation. Without this the rule above would hand a
- * drop shadow back to every card the frame just took it from, and a 2px lift
- * with nothing under it reads as a jitter.
- */
 .glass[data-blur="off"][data-interactive="true"]:hover {
   transform: none;
   box-shadow: var(--glass-edge);

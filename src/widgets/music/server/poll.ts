@@ -6,22 +6,6 @@ import {
 import { ingestPlays } from "./ingest";
 import { createDrizzleStore, type MusicStore } from "./store";
 
-/**
- * Daily incremental poll (R21, R22).
- *
- * Vercel's Hobby plan caps cron at once per day, so this is a freshness knob
- * rather than a correctness one (KTD5): the poll resumes from the newest
- * stored timestamp and last.fm retains full history, so a missed day is
- * recovered on the next run rather than lost. Freshness-critical surfaces read
- * last.fm live instead of waiting for this.
- *
- * It is also the Supabase keepalive. A free project pauses after 7 consecutive
- * days with no database request, and this job's heartbeat write resets that
- * timer — which is why it writes on every run, including runs that ingest
- * nothing.
- */
-
-/** Bounded so one invocation cannot run past a serverless timeout. */
 export const MAX_PAGES_PER_POLL = 10;
 
 export const REQUEST_INTERVAL_MS = 250;
@@ -29,11 +13,8 @@ export const REQUEST_INTERVAL_MS = 250;
 export type PollResult = {
   inserted: number;
   pagesFetched: number;
-  /** The lower bound used, in epoch seconds. Null on a first-ever poll. */
   from: number | null;
-  /** True when the store was empty, so only the most recent page was taken. */
   bootstrap: boolean;
-  /** Newest stored play after this run. */
   newestScrobbleAt: Date | null;
 };
 
@@ -64,13 +45,8 @@ export async function runPoll({
   const startedAt = now();
   const newest = await store.newestScrobbleAt();
 
-  // An empty store means backfill has not run. Take only the most recent page
-  // rather than assuming a prior timestamp — the full history is backfill's job.
   const bootstrap = newest === null;
 
-  // Inclusive lower bound. Re-fetching the newest stored scrobble is free
-  // because ingestion is idempotent; skipping one because two plays share a
-  // second is not recoverable.
   const from = newest ? Math.floor(newest.getTime() / 1000) : undefined;
 
   let inserted = 0;
@@ -97,9 +73,6 @@ export async function runPoll({
     lastError = error instanceof Error ? error.message : String(error);
   }
 
-  // The heartbeat is unconditional, including on failure. Its second job is
-  // keeping the Supabase project awake, and a run that errored still counts as
-  // database activity (KTD5).
   await store.writeJob("poll", {
     status: lastError ? "error" : "ok",
     lastRunAt: startedAt,

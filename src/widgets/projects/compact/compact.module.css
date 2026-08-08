@@ -1,0 +1,41 @@
+.compactList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.compactItem {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  min-width: 0;
+}
+
+.compactSwatch {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(
+    150deg,
+    oklch(0.7 0.12 var(--preview-hue)),
+    oklch(0.48 0.14 calc(var(--preview-hue) + 55))
+  );
+}
+
+.compactMeta {
+  min-width: 0;
+}
+
+.compactTitle {
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.compactDescription {
+  overflow: hidden;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

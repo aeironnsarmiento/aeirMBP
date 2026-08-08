@@ -25,37 +25,21 @@ import {
 } from "@/lib/theme/backgrounds";
 import { readBackfillProgress } from "@/widgets/music/server/backfill";
 
-/**
- * Settings mutation handlers (R8, R33, R34).
- *
- * Scope is site chrome the owner authors: background, glass opacity and the
- * avatar. About copy is edited through the About widget's own surface rather
- * than duplicated here — Settings opens that surface instead of reimplementing
- * it.
- *
- * Every entry point calls requireOwner even though middleware covers the path,
- * so the route fails closed on its own (R34, AE2).
- */
-
 const EDITABLE_FIELDS = [
   "backgroundId",
   "frameOpacity",
   "paneOpacity",
-  // An unlisted field is dropped before validation ever sees it.
   "backgroundLightId",
   "backgroundDarkId",
   "themeSwitchoverAt",
   "themeSwitchoverTo",
 ] as const;
 
-/** Absent means the single background — what every request meant before the
- *  pair existed, so both upload paths stay one code path. */
 function slotOf(request: Request): Appearance | null {
   const slot = new URL(request.url).searchParams.get("slot");
   return slot === "light" || slot === "dark" ? slot : null;
 }
 
-/** Presets are all stills, so only an upload can be a video. */
 function slotMediaKind(
   id: string | null,
   path: string | null,
@@ -65,12 +49,6 @@ function slotMediaKind(
   return path ? backgroundKind(path) : null;
 }
 
-/**
- * Refuses a video in either half of a pair (R8): a pair swaps by custom
- * property, and a property cannot swap a `<video>` for a `<div>` — including
- * two videos. Judged against the merged state, since assigning one slot only
- * makes sense against what the other holds.
- */
 function checkPairMediaKinds(next: SiteSettings): void {
   for (const appearance of APPEARANCES) {
     const kind = slotMediaKind(
@@ -86,15 +64,6 @@ function checkPairMediaKinds(next: SiteSettings): void {
   }
 }
 
-/**
- * Grants permission to upload a background, without the bytes passing through
- * this server (R13).
- *
- * The hosting platform caps a function's request body at 4.5MB, which no
- * usable GIF wallpaper fits under. The client declares what it is about to
- * send, this checks it against the background rules, and the file then travels
- * straight to storage.
- */
 export async function handleUploadSign(request: Request): Promise<Response> {
   const denied = await requireOwner();
   if (denied) return denied;
@@ -122,12 +91,6 @@ export async function handleUploadSign(request: Request): Promise<Response> {
   }
 }
 
-/**
- * Records a background the browser has finished uploading, and selects it.
- *
- * The path is checked against the shape this app mints rather than trusted, so
- * the confirm step cannot be used to point the site at an arbitrary object.
- */
 export async function handleUploadConfirm(request: Request): Promise<Response> {
   const denied = await requireOwner();
   if (denied) return denied;
@@ -144,7 +107,6 @@ export async function handleUploadConfirm(request: Request): Promise<Response> {
 
     const slot = slotOf(request);
 
-    // Both fields in one patch: the write layer is transactional per patch.
     const patch: Partial<SiteSettings> =
       slot === null
         ? { backgroundPath: body.path, backgroundId: CUSTOM_BACKGROUND_ID }
@@ -165,7 +127,6 @@ export async function handleUploadConfirm(request: Request): Promise<Response> {
   }
 }
 
-/** Every stored background path a settings state still points at. */
 function referencedBackgroundPaths(settings: SiteSettings): string[] {
   return [
     settings.backgroundPath,
@@ -174,16 +135,6 @@ function referencedBackgroundPaths(settings: SiteSettings): string[] {
   ].filter((path): path is string => typeof path === "string");
 }
 
-/**
- * Discards one background and returns that slot to a preset (R8).
- * `?slot=light|dark` clears one member of the pair; no slot clears the single
- * background. The stored object goes too — paths carry a timestamp, so an
- * orphan is unreachable — but only when nothing else points at it, since two
- * slots may name the same image (AE3).
- *
- * Settings are written first and references counted from the state after: the
- * reverse order can delete bytes and leave the site pointing at them.
- */
 export async function handleBackgroundDelete(
   request: Request,
 ): Promise<Response> {
@@ -204,7 +155,6 @@ export async function handleBackgroundDelete(
         ? { backgroundPath: null, backgroundId: DEFAULT_BACKGROUND_ID }
         : {
             [BACKGROUND_SLOT_PATH_FIELDS[slot]]: null,
-            // Null, not a preset id — an empty slot is what falls back.
             [BACKGROUND_SLOT_FIELDS[slot]]: null,
           },
     );
@@ -223,7 +173,6 @@ export async function handleBackgroundDelete(
   }
 }
 
-/** Reports whether storage is usable, and what to fix when it is not (R18). */
 export async function handleStorageCheck(): Promise<Response> {
   const denied = await requireOwner();
   if (denied) return denied;
@@ -237,12 +186,6 @@ export async function handleStorageCheck(): Promise<Response> {
   }
 }
 
-/**
- * Provisions the bucket the check just reported as wrong (R18).
- *
- * Same response shape as the check, because that is what the panel already
- * renders: the owner presses one button and reads one line either way.
- */
 export async function handleStorageRepair(): Promise<Response> {
   const denied = await requireOwner();
   if (denied) return denied;
@@ -266,20 +209,27 @@ function pickEditable(body: Record<string, unknown>): Partial<SiteSettings> {
   return patch;
 }
 
-/** Current settings plus job progress, for the Settings panel. */
 export async function handleSettingsRead(): Promise<Response> {
   const denied = await requireOwner();
   if (denied) return denied;
 
-  const [settings, backfill] = await Promise.all([
-    readSiteSettings(),
-    readBackfillProgress(),
-  ]);
+  try {
+    const [settings, backfill] = await Promise.all([
+      readSiteSettings(),
+      readBackfillProgress(),
+    ]);
 
-  return Response.json(
-    { settings, backfill },
-    { headers: { "cache-control": "no-store" } },
-  );
+    return Response.json(
+      { settings, backfill },
+      { headers: { "cache-control": "no-store" } },
+    );
+  } catch (error) {
+    console.error("settings-read-failed", error);
+    return Response.json(
+      { error: "settings-read-failed" },
+      { status: 500, headers: { "cache-control": "no-store" } },
+    );
+  }
 }
 
 export async function handleSettingsUpdate(request: Request): Promise<Response> {
@@ -305,8 +255,6 @@ export async function handleSettingsUpdate(request: Request): Promise<Response> 
     if (touchesBackground) {
       const current = await readSiteSettings();
 
-      // Selecting `custom` with nothing uploaded would strand the site on a
-      // missing image. Each slot has its own upload, so each is asked.
       const selectable: Array<{ field: keyof SiteSettings; path: string | null }> = [
         { field: "backgroundId", path: current.backgroundPath },
         ...APPEARANCES.map((appearance) => ({
@@ -362,8 +310,9 @@ function errorResponse(error: unknown): Response {
   if (error instanceof UploadRejected) {
     return Response.json({ error: error.message }, { status: 422 });
   }
+  console.error("settings-update-failed", error);
   return Response.json(
-    { error: error instanceof Error ? error.message : "settings-update-failed" },
-    { status: 500 },
+    { error: "settings-update-failed" },
+    { status: 500, headers: { "cache-control": "no-store" } },
   );
 }

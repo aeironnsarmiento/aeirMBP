@@ -10,15 +10,6 @@ import type {
   TrackSeed,
 } from "./store";
 
-/**
- * In-memory MusicStore that enforces the same uniqueness rules as the schema.
- *
- * A test double, used only by the ingestion, backfill, poll and enrichment
- * tests. Those are the paths where a bug corrupts data permanently and no
- * amount of manual checking would surface it, so they are exercised against a
- * store that actually rejects a duplicate (track_key, played_at) rather than
- * against a mock that records calls.
- */
 export type MemoryStore = MusicStore & {
   scrobbles: ScrobbleRow[];
   tracks: Map<
@@ -142,11 +133,6 @@ export function createMemoryStore(): MemoryStore {
       track.attemptedAt = new Date();
     },
 
-    /*
-     * Artists are derived from the scrobbles rather than seeded, matching the
-     * real store: every distinct artist with no picture and no prior attempt,
-     * most-played first.
-     */
     async pendingArtists(limit: number) {
       const plays = new Map<string, { name: string; count: number }>();
       for (const scrobble of scrobbles) {

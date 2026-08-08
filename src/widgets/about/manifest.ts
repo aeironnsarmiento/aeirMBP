@@ -1,6 +1,6 @@
 import type { WidgetManifest } from "@/lib/registry/types";
-import { AboutCompact } from "./compact";
-import { AboutExpanded } from "./expanded";
+import { AboutCompact } from "./compact/compact";
+import { AboutExpanded } from "./expanded/expanded";
 import { AboutIcon } from "./icon";
 
 export const aboutManifest: WidgetManifest = {
@@ -11,6 +11,5 @@ export const aboutManifest: WidgetManifest = {
   icon: AboutIcon,
   compact: AboutCompact,
   expanded: AboutExpanded,
-  /** The site's main display: expanded on first load (R4). */
   openByDefault: true,
 };

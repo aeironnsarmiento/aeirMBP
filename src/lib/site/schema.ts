@@ -143,7 +143,6 @@ export const BACKGROUND_SLOT_PATH_FIELDS = {
   dark: "backgroundDarkPath",
 } as const satisfies Record<Appearance, keyof SiteSettings>;
 
-/** `HH:MM` on a 24-hour clock, and nothing else. */
 const SWITCHOVER_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export function isSwitchoverTime(value: unknown): value is string {

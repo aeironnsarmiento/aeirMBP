@@ -2,13 +2,6 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach } from "vitest";
 
-/**
- * Node 25 exposes an experimental `localStorage` global that is inert unless
- * the process was started with a valid `--localstorage-file`. It is defined
- * before jsdom installs its own, so `window.localStorage` resolves to the
- * broken one and every call throws. Replacing it with an in-memory store keeps
- * the storage-backed paths testable and independent of the Node version.
- */
 class MemoryStorage implements Storage {
   #entries = new Map<string, string>();
 

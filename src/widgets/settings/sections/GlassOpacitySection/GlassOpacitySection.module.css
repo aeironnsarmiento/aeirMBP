@@ -1,0 +1,24 @@
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+}
+
+.sliderLabel {
+  min-width: 5.5ch;
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+}
+
+.slider {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.sliderValue {
+  min-width: 3ch;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}

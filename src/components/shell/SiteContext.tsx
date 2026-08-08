@@ -7,23 +7,12 @@ import type { BackgroundSlots } from "@/lib/theme/backgrounds";
 export type SiteContextValue = {
   settings: SiteSettings;
   avatarUrl: string | null;
-  /** Every slot, with uploads already resolved to URLs — that needs the
-   *  storage module, and this context is read by client components (R11). */
   backgrounds: BackgroundSlots;
-  /** Whether this request carries a valid owner session (R16). */
   isOwner: boolean;
 };
 
 const SiteContext = createContext<SiteContextValue | null>(null);
 
-/**
- * Owner-authored state, resolved once on the server and shared with every
- * widget.
- *
- * A context rather than props because the shell renders widgets by iterating
- * the registry and must not know which one needs what (R14). Any widget that
- * needs the owner's settings reads them here.
- */
 export function SiteProvider({
   value,
   children,

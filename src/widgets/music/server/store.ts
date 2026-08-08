@@ -7,18 +7,6 @@ import {
   musicTrack,
 } from "@/lib/db/schema";
 
-/**
- * The music widget's only door to the database (R15).
- *
- * Every table it touches is in the `music_*` namespace. Nothing outside this
- * module issues music queries, and nothing in it reads another widget's tables.
- *
- * It is an interface rather than a set of free functions so the ingestion,
- * backfill, poll and enrichment logic — the parts where a silent bug corrupts
- * data permanently — can be exercised against a store that enforces the same
- * uniqueness rules without a live Postgres.
- */
-
 export type ScrobbleRow = {
   trackKey: string;
   artistKey: string;
@@ -61,12 +49,6 @@ export type PendingArtist = {
   artistName: string;
 };
 
-/**
- * `catchup` is the ingest that rides along with the now-playing pulse. It gets
- * its own row rather than reusing `poll`, whose `lastRunAt` doubles as the
- * Supabase keepalive heartbeat — folding a request-time write into that row
- * would make "the scheduler ran" and "somebody loaded the page" the same fact.
- */
 export type JobName = "backfill" | "poll" | "enrichment" | "catchup";
 
 export type JobState = {
@@ -85,34 +67,22 @@ export type JobPatch = {
 };
 
 export interface MusicStore {
-  /** Inserts rows, silently skipping any that already exist. Returns the number added. */
   insertScrobbles(rows: readonly ScrobbleRow[]): Promise<number>;
-  /** Registers unique tracks so the enrichment sweep has a work list. */
   upsertTrackSeeds(seeds: readonly TrackSeed[]): Promise<number>;
-  /** Newest stored play, or null when nothing has been ingested. */
   newestScrobbleAt(): Promise<Date | null>;
   countScrobbles(): Promise<number>;
-  /** Tracks with neither resolved metadata nor a recorded attempt. */
   pendingEnrichment(limit: number): Promise<PendingTrack[]>;
   countPendingEnrichment(): Promise<number>;
   recordEnrichment(trackKey: string, result: TrackEnrichment): Promise<void>;
-  /** Marks a track both sources missed, so the sweep stops retrying it. */
   recordEnrichmentMiss(trackKey: string): Promise<void>;
-  /** Artists with no picture yet, most-played first so the visible list fills first. */
   pendingArtists(limit: number): Promise<PendingArtist[]>;
   countPendingArtists(): Promise<number>;
   recordArtistPicture(artistKey: string, picture: ArtistPicture): Promise<void>;
-  /** Marks an artist the lookup missed, so the sweep stops retrying it. */
   recordArtistMiss(artistKey: string): Promise<void>;
   readJob(job: JobName): Promise<JobState | null>;
   writeJob(job: JobName, patch: JobPatch): Promise<void>;
 }
 
-/**
- * Artists still owed a portrait: never looked up, or looked up and left
- * without one. Shared by the work list and its count so the two can never
- * drift into disagreeing about what "pending" means.
- */
 function artistNeedsPicture() {
   return or(
     isNull(musicArtist.artistKey),
@@ -127,8 +97,6 @@ export function createDrizzleStore(db = getDb()): MusicStore {
       const inserted = await db
         .insert(musicScrobble)
         .values(rows as ScrobbleRow[])
-        // The unique index on (track_key, played_at) is the idempotency
-        // guarantee (R22) — an overlapping poll adds nothing.
         .onConflictDoNothing({
           target: [musicScrobble.trackKey, musicScrobble.playedAt],
         })
@@ -214,12 +182,6 @@ export function createDrizzleStore(db = getDb()): MusicStore {
         .where(and(eq(musicTrack.trackKey, trackKey), isNull(musicTrack.enrichedAt)));
     },
 
-    /*
-     * Artists are not seeded anywhere, so the work list is derived from the
-     * scrobbles themselves: every distinct artist that has no row yet, or has
-     * one that was never attempted. Ordered by play count so the artists
-     * actually visible in Top artists get a picture first.
-     */
     async pendingArtists(limit) {
       return db
         .select({

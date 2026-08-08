@@ -1,0 +1,60 @@
+.backgrounds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--gap-sm);
+}
+
+.background {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background-position: center;
+  background-size: cover;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.background:hover {
+  transform: translateY(-2px);
+}
+
+.background[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+
+.backgroundLabel {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 14px 8px 5px;
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.55));
+  color: #fff;
+  font-size: 0.7rem;
+  text-align: left;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding: var(--gap-sm);
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-md);
+}
+
+.slotHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--gap-sm);
+}
+
+.slotLabel {
+  font-size: 0.82rem;
+  font-weight: 500;
+}

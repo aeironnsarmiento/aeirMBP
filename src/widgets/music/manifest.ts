@@ -1,6 +1,6 @@
 import type { WidgetManifest } from "@/lib/registry/types";
-import { MusicCompact } from "./compact";
-import { MusicExpanded } from "./expanded";
+import { MusicCompact } from "./compact/compact";
+import { MusicExpanded } from "./expanded/expanded";
 import { MusicIcon } from "./icon";
 
 export const musicManifest: WidgetManifest = {
@@ -12,7 +12,6 @@ export const musicManifest: WidgetManifest = {
   icon: MusicIcon,
   compact: MusicCompact,
   expanded: MusicExpanded,
-  // The three tallies read together on the top row; the feed sits under them.
   subViews: [
     { id: "tracks", label: "Top tracks" },
     { id: "artists", label: "Top artists" },

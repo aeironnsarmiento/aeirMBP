@@ -1,15 +1,9 @@
 node_modules/
-.context/
 .next/
 out/
 build/
 coverage/
-.motion-probe/
-.claude/
 docs/
-CLAUDE.md
-CONCEPTS.md
-scripts/
 
 .env
 .env.local

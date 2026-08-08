@@ -1,0 +1,71 @@
+.compactRate {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-xs);
+}
+
+.compactNumber {
+  font-size: 1.6rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+
+.compactUnit {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
+.compactNote {
+  margin-top: 2px;
+  margin-bottom: var(--gap-md);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+.compactList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.compactRow {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  min-width: 0;
+}
+
+.compactMeta {
+  min-width: 0;
+  flex: 1;
+}
+
+.compactTrack {
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactArtist {
+  overflow: hidden;
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactWhen {
+  flex: none;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.66rem;
+  color: var(--ink-faint);
+}
+
+.compactEmpty {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
