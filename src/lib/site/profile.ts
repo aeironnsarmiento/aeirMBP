@@ -13,7 +13,7 @@ export const PROFILE: SiteProfile = {
   handle: "xenavalon",
   location: "Richardson, TX | Conroe, TX",
   aboutCopy:
-    "I build things for the web and listen to a lot of music. This site is a desktop: every tab is a widget you can open, and the music one runs on my own scrobble history rather than someone else's dashboard.",
+    "I build things for the web and listen to a lot of music. This site is a desktop: every tab is a widget you can open, and the music loads my music stats.",
   links: [
     { label: "linkedin", href: "https://www.linkedin.com/in/aeironn/" },
     { label: "github", href: "https://github.com/aeironnsarmiento" },

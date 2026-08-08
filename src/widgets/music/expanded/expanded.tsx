@@ -117,7 +117,7 @@ export function Summary({ data }: { data: MusicSummary }) {
         <div className={styles.statValue}>
           {scrobblesThisWeek.toLocaleString()}
         </div>
-        <div className={styles.statLabel}>Scrobbles this week</div>
+        <div className={styles.statLabel}>Songs this week</div>
       </GlassSurface>
 
       <GlassSurface tone="well" className={styles.stat}>
@@ -150,9 +150,6 @@ export function Summary({ data }: { data: MusicSummary }) {
       <GlassSurface tone="well" className={styles.stat}>
         <div className={styles.statValue}>{uniqueArtists.toLocaleString()}</div>
         <div className={styles.statLabel}>Artists</div>
-        <div className={styles.statNote}>
-          {totalScrobbles.toLocaleString()} scrobbles all time
-        </div>
       </GlassSurface>
     </div>
   );
