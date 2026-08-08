@@ -1,0 +1,18 @@
+.compactList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
+.compactRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+}
+
+.compactValue {
+  font-family: var(--font-mono, monospace);
+  color: var(--ink);
+}

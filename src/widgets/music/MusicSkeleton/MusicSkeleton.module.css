@@ -1,0 +1,30 @@
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.row {
+  height: 60px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--glass-surface-weak),
+    var(--glass-surface-strong),
+    var(--glass-surface-weak)
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s var(--ease-in-out) infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    animation: none;
+  }
+}

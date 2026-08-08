@@ -1,0 +1,28 @@
+.scheduleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.timeInput,
+.select {
+  padding: 6px 10px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-sm);
+  background: var(--glass-surface-weak);
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+
+.timeInput:focus-visible,
+.select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.timeInput:disabled,
+.select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

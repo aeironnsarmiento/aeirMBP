@@ -2,7 +2,6 @@ import { DEFAULT_SITE_SETTINGS, type SiteSettings } from "@/lib/site/schema";
 import type { BackgroundSlots } from "@/lib/theme/backgrounds";
 import type { SiteContextValue } from "./SiteContext";
 
-/** Shared so adding a context field is one edit, not four. */
 export function siteFixture(
   overrides: Partial<SiteContextValue> = {},
 ): SiteContextValue {
@@ -15,7 +14,6 @@ export function siteFixture(
   };
 }
 
-/** Slots resolved the way the page resolves them, from a settings object. */
 export function backgroundsFixture(
   settings: SiteSettings = DEFAULT_SITE_SETTINGS,
   urls: Partial<Record<"single" | "light" | "dark", string | null>> = {},

@@ -1,0 +1,46 @@
+.viewport {
+  height: 100dvh;
+  padding: var(--shell-pad);
+}
+
+.shell {
+  display: grid;
+  grid-template-areas:
+    "sidebar topbar"
+    "sidebar grid";
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--gap-md);
+  height: 100%;
+  padding: var(--gap-md);
+}
+
+.background {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  background-image: var(--bg-image);
+  background-position: var(--bg-position);
+  background-size: cover;
+  background-repeat: no-repeat;
+  object-fit: cover;
+}
+
+@media (max-width: 899px) {
+  .viewport {
+    padding: var(--gap-sm);
+    padding-bottom: calc(var(--gap-sm) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .shell {
+    grid-template-areas:
+      "topbar"
+      "grid"
+      "sidebar";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    padding: var(--gap-sm);
+  }
+}

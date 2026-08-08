@@ -19,12 +19,6 @@ export type MusicState =
 
 type Tracked = MusicState & { key: string };
 
-/**
- * Fetches one aggregate surface.
- *
- * Every response comes from local storage, so this hook has no last.fm
- * fallback path — there is nothing to fall back from (AE8).
- */
 export function useMusic({
   view,
   range,
@@ -33,16 +27,8 @@ export function useMusic({
   const key = `${view}|${range ?? ""}|${limit ?? ""}`;
   const [tracked, setTracked] = useState<Tracked>({ key, status: "loading" });
 
-  /*
-   * The totals describe the whole library rather than the open view, so they
-   * outlive a view switch. Held here instead of alongside `tracked`, which
-   * resets to loading on every key change — reading them from the request in
-   * flight made them blink out and back on each tab.
-   */
   const [summary, setSummary] = useState<MusicSummary | null>(null);
 
-  // Reset during render rather than in an effect: switching sub-view must not
-  // paint one frame of the previous view's rows before the effect runs.
   if (tracked.key !== key) setTracked({ key, status: "loading" });
 
   useEffect(() => {

@@ -1,12 +1,6 @@
 import { vi } from "vitest";
 import type { OpenWidgetApi } from "./useOpenWidget";
 
-/**
- * A stand-in for the open-widget store.
- *
- * The store's own behaviour is covered by `useOpenWidget.test.ts`; the grid
- * tests only need to render a given state and see what the grid does with it.
- */
 export function closedStore(
   overrides: Partial<OpenWidgetApi> = {},
 ): OpenWidgetApi {

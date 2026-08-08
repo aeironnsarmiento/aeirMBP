@@ -1,6 +1,6 @@
 import type { WidgetManifest } from "@/lib/registry/types";
-import { SettingsCompact } from "./compact";
-import { SettingsExpanded } from "./expanded";
+import { SettingsCompact } from "./compact/compact";
+import { SettingsExpanded } from "./expanded/expanded";
 import { SettingsIcon } from "./icon";
 
 export const settingsManifest: WidgetManifest = {
@@ -12,6 +12,5 @@ export const settingsManifest: WidgetManifest = {
   icon: SettingsIcon,
   compact: SettingsCompact,
   expanded: SettingsExpanded,
-  /** Removed from the registry entirely for an unauthenticated caller (R16). */
   adminOnly: true,
 };

@@ -1,6 +1,6 @@
 import type { WidgetManifest } from "@/lib/registry/types";
-import { ProjectsCompact } from "./compact";
-import { ProjectsExpanded } from "./expanded";
+import { ProjectsCompact } from "./compact/compact";
+import { ProjectsExpanded } from "./expanded/expanded";
 import { ProjectsIcon } from "./icon";
 
 export const projectsManifest: WidgetManifest = {

@@ -1,10 +1,7 @@
-/** Display helpers for the music widget. Pure, so they are safe on both sides. */
-
 export function formatPlays(plays: number): string {
   return plays === 1 ? "1 play" : `${plays.toLocaleString()} plays`;
 }
 
-/** "3:41". Null duration renders as an em dash rather than a fabricated zero. */
 export function formatDuration(ms: number | null): string {
   if (ms === null || ms <= 0) return "—";
   const totalSeconds = Math.round(ms / 1000);
@@ -13,7 +10,6 @@ export function formatDuration(ms: number | null): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-/** "5d 3h" / "3h 24m" / "48m". Used for the listening-time total. */
 export function formatListeningTime(minutes: number): string {
   if (minutes <= 0) return "0m";
   const days = Math.floor(minutes / 1440);
@@ -32,7 +28,6 @@ const RELATIVE_STEPS: Array<[limitSeconds: number, divisor: number, unit: string
   [604_800, 86_400, "d"],
 ];
 
-/** "just now" / "14m" / "3h" / "6d" / a date beyond a week. */
 export function formatRelativeTime(when: Date, now: Date = new Date()): string {
   const seconds = Math.max(0, Math.round((now.getTime() - when.getTime()) / 1000));
   if (seconds < 30) return "just now";
@@ -44,7 +39,6 @@ export function formatRelativeTime(when: Date, now: Date = new Date()): string {
   return when.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-/** Stable hue from a string, so a track without artwork still looks deliberate. */
 export function hueFor(seed: string): number {
   let hash = 0;
   for (let i = 0; i < seed.length; i += 1) {

@@ -1,0 +1,18 @@
+.hotkey {
+  flex: none;
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.64rem;
+  color: var(--ink-faint);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+@media (max-width: 899px) {
+  .hotkey {
+    display: none;
+  }
+}

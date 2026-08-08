@@ -1,14 +1,5 @@
-/**
- * Typed wrapper over the last.fm read API.
- *
- * Only `user.getRecentTracks` is needed: it is the source of truth for
- * scrobble events during backfill and the daily poll (A3), and the live read
- * behind the now-playing pulse (R27).
- */
-
 const API_ROOT = "https://ws.audioscrobbler.com/2.0/";
 
-/** last.fm's documented maximum. 200 makes the full backfill ~37 requests. */
 export const MAX_PAGE_SIZE = 200;
 
 export class LastfmError extends Error {
@@ -28,10 +19,6 @@ export type LastfmPlay = {
   track: string;
   album: string | null;
   imageUrl: string | null;
-  /**
-   * When the play completed. Null means last.fm reported it as currently
-   * playing — it has no timestamp and must never be persisted as a scrobble.
-   */
   playedAt: Date | null;
   nowPlaying: boolean;
 };
@@ -68,7 +55,6 @@ function textOf(value: { "#text"?: string; name?: string } | string | undefined)
   return value?.["#text"] ?? value?.name ?? "";
 }
 
-/** Largest image last.fm offers for the play. Frequently a grey placeholder. */
 function bestImage(images: RawImage[] | undefined): string | null {
   if (!images?.length) return null;
   const order = ["extralarge", "large", "medium", "small"];
@@ -117,18 +103,11 @@ async function wait(ms: number) {
 }
 
 export type FetchOptions = {
-  /** Attempts including the first. Defaults to 3. */
   attempts?: number;
-  /** Base delay for exponential backoff, in milliseconds. */
   backoffMs?: number;
   signal?: AbortSignal;
 };
 
-/**
- * Issues one request, retrying only on statuses that indicate the request may
- * succeed later. last.fm does not publish its rate ceiling, so 429 is handled
- * by backing off rather than by a fixed local budget.
- */
 async function callApi(
   params: Record<string, string>,
   { attempts = 3, backoffMs = 500, signal }: FetchOptions = {},
@@ -169,9 +148,6 @@ async function callApi(
 
     const body = (await response.json()) as { error?: number; message?: string };
 
-    // last.fm reports application errors with HTTP 200 and an `error` field.
-    // Treating that body as an empty page would silently record "no scrobbles"
-    // for a window that actually has them.
     if (typeof body?.error === "number") {
       throw new LastfmError(body.message ?? `last.fm error ${body.error}`, {
         code: body.error,
@@ -187,19 +163,10 @@ async function callApi(
 export type RecentTracksQuery = {
   page?: number;
   limit?: number;
-  /** Inclusive lower bound, in seconds since the epoch. */
   from?: number;
-  /** Inclusive upper bound, in seconds since the epoch. */
   to?: number;
 };
 
-/**
- * One page of plays, newest first.
- *
- * The currently-playing entry, when present, is returned with
- * `nowPlaying: true` and `playedAt: null`. Callers that persist scrobbles must
- * drop it — see `toScrobbleRows`.
- */
 export async function getRecentTracks(
   query: RecentTracksQuery = {},
   options: FetchOptions = {},
@@ -222,7 +189,6 @@ export async function getRecentTracks(
     throw new LastfmError("last.fm returned no recenttracks payload");
   }
 
-  // A single result comes back as an object rather than a one-element array.
   const rawTracks = Array.isArray(recent.track)
     ? recent.track
     : recent.track
@@ -239,7 +205,6 @@ export async function getRecentTracks(
   };
 }
 
-/** The currently-playing track, or null when nothing is playing. */
 export async function getNowPlaying(
   options: FetchOptions = {},
 ): Promise<LastfmPlay | null> {

@@ -3,29 +3,13 @@ import { createDeezerProvider } from "./deezer";
 import { createMusicBrainzProvider } from "./musicbrainz";
 import { isUsable, type EnrichmentProvider } from "./provider";
 
-/**
- * Resolves duration and artwork for unique tracks (R23).
- *
- * Keyed on the normalized track identity and cached permanently (KTD7):
- * ~7,300 scrobbles reduce to roughly 1,500 unique tracks, each looked up once
- * and never refreshed. That trades metadata freshness for a bounded, one-time
- * API cost.
- *
- * Chunked and resumable (KTD8): 1,500 tracks at MusicBrainz's 1 req/sec floor
- * is about 25 minutes, well past any serverless invocation timeout. Each run
- * takes a bounded batch and the store's own filter is the cursor.
- */
-
 export const BATCH_SIZE = 25;
 
 export type SweepResult = {
   processed: number;
   enriched: number;
-  /** Tracks neither source could match. Marked attempted so they are not retried. */
   missed: number;
-  /** Tracks left pending because a provider failed transiently. */
   deferred: number;
-  /** Tracks still awaiting a first attempt after this run. */
   remaining: number;
   done: boolean;
 };
@@ -40,7 +24,6 @@ export type SweepDeps = {
 const defaultSleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Deezer first, MusicBrainz on a miss. */
 export function defaultProviders(): EnrichmentProvider[] {
   return [createDeezerProvider(), createMusicBrainzProvider()];
 }
@@ -57,17 +40,12 @@ export async function runEnrichmentSweep({
   let missed = 0;
   let deferred = 0;
 
-  // One timestamp per provider so each one's own rate ceiling is respected
-  // independently — Deezer's 200ms must not be slowed to MusicBrainz's second.
   const lastCallAt = new Map<string, number>();
 
   for (const track of pending) {
     const outcome = await enrichOne(track, providers, sleep, lastCallAt);
 
     if (outcome.failed && !isUsable(outcome.result)) {
-      // A provider threw. Leaving the track pending is the whole point: marking
-      // it attempted after a transient outage would permanently exclude it from
-      // the minutes total with no way to notice.
       deferred += 1;
       continue;
     }
@@ -103,13 +81,6 @@ type Outcome = {
   failed: boolean;
 };
 
-/**
- * Walks the provider chain, stopping as soon as both fields are resolved.
- *
- * A provider that supplies only one field does not end the chain — Deezer
- * regularly returns a duration with no cover, and letting MusicBrainz fill the
- * gap is strictly better than storing a half-enriched track.
- */
 async function enrichOne(
   track: PendingTrack,
   providers: readonly EnrichmentProvider[],

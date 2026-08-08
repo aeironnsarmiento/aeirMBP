@@ -9,13 +9,6 @@ export class RegistryError extends Error {
 
 const HOTKEY_PATTERN = /^[a-z0-9]$/;
 
-/**
- * Validates a set of manifests and freezes them into a stable ordered registry.
- *
- * Every conflict is a throw at assembly time rather than a silent winner at
- * runtime. Two widgets claiming `m` is the kind of collision that is invisible
- * in review and only surfaces as "the hotkey opens the wrong thing".
- */
 export function assembleRegistry(manifests: readonly WidgetManifest[]): Registry {
   const seenIds = new Set<string>();
   const seenHotkeys = new Map<string, string>();
@@ -65,8 +58,6 @@ export function assembleRegistry(manifests: readonly WidgetManifest[]): Registry
     }
   }
 
-  // Ordered by the declared position, with id as the tiebreak so the result is
-  // identical on every call regardless of input order.
   const ordered = [...manifests].sort(
     (a, b) => a.order - b.order || a.id.localeCompare(b.id),
   );
@@ -74,24 +65,15 @@ export function assembleRegistry(manifests: readonly WidgetManifest[]): Registry
   return Object.freeze(ordered);
 }
 
-/**
- * The manifests a given caller may see.
- *
- * Admin-only entries are removed from the collection, not hidden downstream —
- * an unauthenticated caller receives a registry in which Settings does not
- * exist, so no rendering path can leak it (R16, AE2).
- */
 export function visibleWidgets(registry: Registry, isOwner: boolean): Registry {
   if (isOwner) return registry;
   return Object.freeze(registry.filter((manifest) => !manifest.adminOnly));
 }
 
-/** The widget expanded on first load, or null when none is marked (R4). */
 export function defaultWidgetId(registry: Registry): string | null {
   return registry.find((manifest) => manifest.openByDefault)?.id ?? null;
 }
 
-/** The widget bound to a pressed key, or null when the key is unbound. */
 export function widgetForHotkey(
   registry: Registry,
   key: string,
@@ -108,7 +90,6 @@ export function findWidget(
   return registry.find((manifest) => manifest.id === id) ?? null;
 }
 
-/** The sub-view a widget opens on, or null when it declares none. */
 export function defaultSubView(manifest: WidgetManifest): string | null {
   const declared = manifest.defaultSubView;
   if (declared && manifest.subViews?.some((view) => view.id === declared)) {

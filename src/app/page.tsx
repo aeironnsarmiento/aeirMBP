@@ -1,4 +1,4 @@
-import { Shell } from "@/components/shell/Shell";
+import { Shell } from "@/components/shell/Shell/Shell";
 import { ThemeVars } from "@/components/shell/ThemeVars";
 import { isOwnerRequest } from "@/lib/auth/guard";
 import {
@@ -13,17 +13,6 @@ import type { NowPlaying } from "@/widgets/music/server/now";
 
 export const dynamic = "force-dynamic";
 
-/**
- * The dashboard.
- *
- * Resolves owner-authored state and the owner session on the server, then
- * hands both to the client shell. Owner status is decided here so the registry
- * filter runs against a value the client cannot forge (R16).
- *
- * Both reads degrade rather than fail: an unconfigured or unreachable database
- * renders the site with defaults instead of an error page, and last.fm being
- * down costs the pulse and nothing else (AE8).
- */
 export default async function Page() {
   const [settings, isOwner, nowPlaying] = await Promise.all([
     safeSettings(),
@@ -31,8 +20,6 @@ export default async function Page() {
     safeNowPlaying(),
   ]);
 
-  // Resolved once here: turning a stored path into a URL needs the storage
-  // module, and both consumers below are client-safe.
   const backgrounds: BackgroundSlots = {
     single: {
       id: settings.backgroundId,
@@ -64,12 +51,6 @@ export default async function Page() {
   );
 }
 
-/**
- * Degrading, but no longer silently. A failed settings read renders the whole
- * site from defaults, which right after a save is indistinguishable from a
- * save that never took — the last standing candidate for the About-save
- * defect. See docs/about-save-propagation-diagnosis.md.
- */
 function reportDegraded(what: string, error: unknown): void {
   console.error(
     `[page] ${what} failed; rendering the degraded path:`,
@@ -90,8 +71,6 @@ async function safeOwner(): Promise<boolean> {
   try {
     return await isOwnerRequest();
   } catch (error) {
-    // A missing OWNER_SECRET means owner auth cannot operate. Failing closed
-    // is the only safe reading of that.
     reportDegraded("owner check", error);
     return false;
   }

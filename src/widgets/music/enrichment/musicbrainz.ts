@@ -1,18 +1,9 @@
 import type { PendingTrack } from "../server/store";
 import type { EnrichmentProvider, ProviderResult } from "./provider";
 
-/**
- * MusicBrainz plus Cover Art Archive (KTD6).
- *
- * The fallback when Deezer misses. No key required, but a 1 request/second
- * ceiling that is enforced by IP blocking, and a descriptive User-Agent is
- * mandatory — anonymous clients are refused.
- */
-
 const RECORDING_URL = "https://musicbrainz.org/ws/2/recording";
 const COVER_ART_URL = "https://coverartarchive.org/release";
 
-/** MusicBrainz blocks on violation, so this is a hard floor, not a suggestion. */
 const MIN_INTERVAL_MS = 1_100;
 
 const USER_AGENT =
@@ -27,15 +18,10 @@ type MusicBrainzResponse = {
   recordings?: MusicBrainzRecording[];
 };
 
-/** Lucene metacharacters would otherwise turn a title into a malformed query. */
 function escapeLucene(value: string): string {
   return value.replace(/([+\-&|!(){}[\]^"~*?:\\/])/g, "\\$1");
 }
 
-/**
- * Cover Art Archive answers 307 when art exists and 404 when it does not.
- * Checking is one cheap request and avoids storing a URL that renders broken.
- */
 async function coverArtUrl(
   releaseId: string,
   signal: AbortSignal | undefined,

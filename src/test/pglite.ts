@@ -6,14 +6,6 @@ import { musicScrobble, musicTrack } from "@/lib/db/schema";
 import type { MusicDb } from "@/widgets/music/queries/aggregations";
 import { albumKey, normalizeArtist, trackKey } from "@/widgets/music/server/normalize";
 
-/**
- * Real Postgres, in-process.
- *
- * The aggregations are SQL `GROUP BY` with `mode() within group` and window
- * filters. Testing them against a hand-rolled fake would prove the fake works,
- * not the query, so PGlite runs the actual migrations and the actual
- * statements — no live database, no shared fixture state between test files.
- */
 export async function createTestDb(): Promise<{
   db: MusicDb;
   close: () => Promise<void>;
@@ -35,7 +27,6 @@ export type SeedPlay = {
   playedAt: Date;
 };
 
-/** Inserts scrobbles the way ingestion would, keys included. */
 export async function seedScrobbles(db: MusicDb, plays: readonly SeedPlay[]) {
   if (plays.length === 0) return;
 
@@ -60,7 +51,6 @@ export type SeedTrack = {
   artworkUrl?: string | null;
 };
 
-/** Registers unique tracks, optionally already enriched. */
 export async function seedTracks(db: MusicDb, tracks: readonly SeedTrack[]) {
   if (tracks.length === 0) return;
 

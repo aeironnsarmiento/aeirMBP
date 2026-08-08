@@ -1,0 +1,38 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--glass-border-quiet);
+  border-radius: var(--radius-pill);
+  background: var(--glass-surface-weak);
+  color: var(--ink);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.button:hover:not(:disabled) {
+  background: var(--glass-surface-strong);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.status {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
+.status[data-tone="error"] {
+  color: var(--live);
+}
