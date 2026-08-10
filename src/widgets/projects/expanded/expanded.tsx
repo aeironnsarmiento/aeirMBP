@@ -5,31 +5,21 @@ import { hueFor, initialsFor } from "@/widgets/music/format";
 import { PROJECTS, type Project } from "../data";
 import styles from "./expanded.module.css";
 
-export const GRID_THRESHOLD = 3;
-
 export function ProjectsGallery({
   projects,
 }: {
   projects: readonly Project[];
 }) {
-  const layout = projects.length >= GRID_THRESHOLD ? "grid" : "hero";
-
   return (
-    <div className={styles.gallery} data-layout={layout}>
+    <div className={styles.gallery}>
       {projects.map((project) => (
-        <ProjectCard key={project.id} project={project} layout={layout} />
+        <ProjectCard key={project.id} project={project} />
       ))}
     </div>
   );
 }
 
-function ProjectCard({
-  project,
-  layout,
-}: {
-  project: Project;
-  layout: "hero" | "grid";
-}) {
+function ProjectCard({ project }: { project: Project }) {
   const host = hostOf(project.href);
 
   return (
@@ -41,7 +31,6 @@ function ProjectCard({
       href={project.href}
       target="_blank"
       rel="noopener noreferrer"
-      data-layout={layout}
       data-testid={`project-${project.id}`}
     >
       <div

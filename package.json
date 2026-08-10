@@ -16,7 +16,8 @@
     "db:push": "drizzle-kit push",
     "db:audit": "node docs/scripts/db-audit.mjs",
     "css:audit": "node docs/scripts/css-payload-audit.mjs",
-    "motion:probe": "node docs/scripts/motion-probe.mjs"
+    "motion:probe": "node docs/scripts/motion-probe.mjs",
+    "projects:palette": "node docs/scripts/project-palette.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",

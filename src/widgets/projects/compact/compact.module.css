@@ -16,11 +16,8 @@
   width: 34px;
   height: 34px;
   border-radius: var(--radius-xs);
-  background: linear-gradient(
-    150deg,
-    oklch(0.7 0.12 var(--preview-hue)),
-    oklch(0.48 0.14 calc(var(--preview-hue) + 55))
-  );
+  background: linear-gradient(150deg, var(--swatch-from), var(--swatch-to));
+  border: 1px solid var(--glass-border-quiet);
 }
 
 .compactMeta {

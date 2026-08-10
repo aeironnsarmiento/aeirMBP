@@ -1,7 +1,7 @@
 "use client";
 
-import { hueFor } from "@/widgets/music/format";
 import { PROJECTS } from "../data";
+import { swatchStyle } from "../palette";
 import styles from "./compact.module.css";
 
 export function ProjectsCompact() {
@@ -11,9 +11,7 @@ export function ProjectsCompact() {
         <div key={project.id} className={styles.compactItem}>
           <div
             className={styles.compactSwatch}
-            style={
-              { "--preview-hue": hueFor(project.id) } as React.CSSProperties
-            }
+            style={swatchStyle(project)}
             aria-hidden="true"
           />
           <div className={styles.compactMeta}>

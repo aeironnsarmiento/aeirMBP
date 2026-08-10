@@ -57,7 +57,7 @@
 
   --shell-pad: 22px;
   --sidebar-w: 232px;
-  --topbar-h: 54px;
+  --topbar-h: 64px;
 
   /* --- Motion ------------------------------------------------------------- */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
