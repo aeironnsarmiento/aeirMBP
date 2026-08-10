@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { PROJECTS, type Project } from "../data";
-import { GRID_THRESHOLD, ProjectsExpanded, ProjectsGallery } from "../expanded/expanded";
+import { ProjectsExpanded, ProjectsGallery } from "../expanded/expanded";
 
 function project(overrides: Partial<Project> = {}): Project {
   return {
@@ -20,28 +20,16 @@ function gallery(count: number) {
   );
 }
 
-describe("layout by entry count (AE6)", () => {
-  it("presents a single entry as a hero rather than a one-cell grid", () => {
+describe("grid layout (AE6)", () => {
+  it("lays a single entry out in the same grid the rest will join", () => {
     const { container } = render(<ProjectsGallery projects={gallery(1)} />);
 
-    expect(container.firstElementChild).toHaveAttribute("data-layout", "hero");
+    // No count-dependent variant: one card is a one-cell grid, not a hero.
+    expect(container.firstElementChild).not.toHaveAttribute("data-layout");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
-  it("keeps the hero treatment at two entries", () => {
-    const { container } = render(<ProjectsGallery projects={gallery(2)} />);
-
-    expect(container.firstElementChild).toHaveAttribute("data-layout", "hero");
-  });
-
-  it("switches to a grid once there are enough entries to fill one", () => {
-    const { container } = render(
-      <ProjectsGallery projects={gallery(GRID_THRESHOLD)} />,
-    );
-
-    expect(container.firstElementChild).toHaveAttribute("data-layout", "grid");
-  });
-
-  it("renders every entry in either layout", () => {
+  it("renders every entry as the list grows", () => {
     render(<ProjectsGallery projects={gallery(4)} />);
 
     expect(screen.getAllByRole("link")).toHaveLength(4);

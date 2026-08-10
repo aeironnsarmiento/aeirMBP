@@ -3,8 +3,8 @@
   align-items: center;
   gap: var(--gap-sm);
   min-width: 0;
-  max-width: 340px;
-  padding: 4px 12px 4px 4px;
+  max-width: 380px;
+  padding: 8px 12px 8px 8px;
   border: 1px solid var(--glass-border-quiet);
   border-radius: var(--radius-pill);
 }
@@ -14,8 +14,8 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: linear-gradient(
