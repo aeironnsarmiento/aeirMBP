@@ -12,8 +12,8 @@ export const PROFILE: SiteProfile = {
   name: "Aeironn Sarmiento",
   handle: "xenavalon",
   location: "Richardson, TX | Conroe, TX",
-  aboutCopy:
-    "I build things for the web and listen to a lot of music. This site is a desktop: every tab is a widget you can open, and the music loads my music stats.",
+  aboutCopy: `I work on web experiences that are useful, interactive, and thoughtfully made.
+Here you can find what I have built; what I am exploring; and what I am listening to.`,
   links: [
     { label: "linkedin", href: "https://www.linkedin.com/in/aeironn/" },
     { label: "github", href: "https://github.com/aeironnsarmiento" },
