@@ -2,7 +2,7 @@ const DPR = 2;
 
 const DEEZER_SIZES = [56, 250, 500, 1000];
 const LASTFM_SIZES = [34, 64, 174, 300];
-const COVER_ART_ARCHIVE_SIZES = [250, 500, 1200];
+const COVER_ART_ARCHIVE_SIZES = [500, 1200];
 
 function snapUp(sizes: readonly number[], needed: number): number {
   return sizes.find((size) => size >= needed) ?? sizes[sizes.length - 1];

@@ -1,11 +1,18 @@
 // @vitest-environment node
 
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { PROFILE } from "../profile";
 
+// Anchored to this module rather than the working directory, and kept out of
+// `new URL(..., import.meta.url)` so Vite has no template to expand into an
+// asset glob. See solutions/test-failures/vitest-source-reader-avoids-vite-asset-glob.md
+const sourceDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
 describe("the client boundary", () => {
-  const source = readFileSync("src/lib/site/profile.ts", "utf8");
+  const source = readFileSync(resolve(sourceDirectory, "profile.ts"), "utf8");
 
   it("carries no use-client directive", () => {
     const firstStatement = source

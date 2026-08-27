@@ -4,7 +4,7 @@ import { ingestPlays } from "../../server/ingest";
 import type { LastfmPlay } from "../../lastfm/client";
 import { createMemoryStore, type MemoryStore } from "../../server/store.memory";
 import type { EnrichmentProvider, ProviderResult } from "../provider";
-import { runEnrichmentSweep } from "../sweep";
+import { drainEnrichmentSweep, runEnrichmentSweep } from "../sweep";
 
 function play(track: string, minutesAgo = 10): LastfmPlay {
   return {
@@ -284,5 +284,125 @@ describe("rate ceilings", () => {
     const intervals = waited.mock.calls.map((call) => call[0]);
     expect(intervals).toContain(200);
     expect(intervals).toContain(1100);
+  });
+});
+
+describe("draining the whole backlog", () => {
+  it("keeps sweeping past one batch until nothing is pending", async () => {
+    const store = await storeWithTracks("One", "Two", "Three");
+    const deezer = provider("deezer", async () => HIT);
+
+    const result = await drainEnrichmentSweep({
+      store,
+      providers: [deezer],
+      batchSize: 1,
+      sleep: sleep(),
+    });
+
+    expect(result.processed).toBe(3);
+    expect(result.enriched).toBe(3);
+    expect(result.remaining).toBe(0);
+    expect(result.done).toBe(true);
+    expect(deezer.calls.sort()).toEqual(["One", "Three", "Two"]);
+  });
+
+  it("stops once the time budget is spent, leaving the rest pending", async () => {
+    const store = await storeWithTracks("One", "Two", "Three");
+    let clock = 0;
+
+    const result = await drainEnrichmentSweep({
+      store,
+      providers: [provider("deezer", async () => HIT)],
+      batchSize: 1,
+      sleep: sleep(),
+      budgetMs: 100,
+      startedAt: 0,
+      now: () => (clock += 120),
+    });
+
+    expect(result.processed).toBe(1);
+    expect(result.remaining).toBe(2);
+    expect(result.done).toBe(false);
+  });
+
+  it("gives up rather than spinning when every provider is down", async () => {
+    const store = await storeWithTracks("One", "Two");
+    const failing = provider("deezer", async () => {
+      throw new Error("Deezer responded 503");
+    });
+
+    const result = await drainEnrichmentSweep({
+      store,
+      providers: [failing],
+      batchSize: 2,
+      sleep: sleep(),
+    });
+
+    expect(result.deferred).toBe(2);
+    expect(result.remaining).toBe(2);
+    expect(failing.calls).toEqual(["One", "Two"]);
+  });
+});
+
+describe("a track a provider matched but had no cover for", () => {
+  it("comes back around once the retry window has passed", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-01T00:00:00Z"));
+      const store = await storeWithTracks("Weird Fishes");
+      const durationOnly = provider("deezer", async () => ({
+        durationMs: 261_000,
+        artworkUrl: null,
+      }));
+
+      await runEnrichmentSweep({
+        store,
+        providers: [durationOnly],
+        sleep: sleep(),
+      });
+      expect([...store.tracks.values()][0].artworkUrl).toBeNull();
+
+      // Same day: already attempted, so it stays out of the way.
+      const sameDay = await runEnrichmentSweep({
+        store,
+        providers: [durationOnly],
+        sleep: sleep(),
+      });
+      expect(sameDay.processed).toBe(0);
+
+      vi.setSystemTime(new Date("2026-09-05T00:00:00Z"));
+      const later = await runEnrichmentSweep({
+        store,
+        providers: [provider("deezer", async () => HIT)],
+        sleep: sleep(),
+      });
+
+      expect(later.processed).toBe(1);
+      expect([...store.tracks.values()][0].artworkUrl).toBe(
+        "https://cdn.example/cover.jpg",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is not stripped of artwork by a later duration-only hit", async () => {
+    const store = await storeWithTracks("Weird Fishes");
+    const [key] = [...store.tracks.keys()];
+
+    await store.recordEnrichment(key, {
+      durationMs: null,
+      artworkUrl: "https://cdn.example/cover.jpg",
+      source: "musicbrainz",
+    });
+    await store.recordEnrichment(key, {
+      durationMs: 261_000,
+      artworkUrl: null,
+      source: "deezer",
+    });
+
+    const track = store.tracks.get(key)!;
+    expect(track.artworkUrl).toBe("https://cdn.example/cover.jpg");
+    expect(track.durationMs).toBe(261_000);
   });
 });

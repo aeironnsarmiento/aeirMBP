@@ -121,3 +121,44 @@ async function enrichOne(
 
   return { result, sources, failed };
 }
+
+export type DrainDeps = SweepDeps & {
+  budgetMs?: number;
+  startedAt?: number;
+  now?: () => number;
+};
+
+export async function drainEnrichmentSweep({
+  budgetMs = Infinity,
+  startedAt,
+  now = Date.now,
+  ...sweepDeps
+}: DrainDeps = {}): Promise<SweepResult> {
+  const began = startedAt ?? now();
+
+  const total: SweepResult = {
+    processed: 0,
+    enriched: 0,
+    missed: 0,
+    deferred: 0,
+    remaining: 0,
+    done: false,
+  };
+
+  for (;;) {
+    const batch = await runEnrichmentSweep(sweepDeps);
+
+    total.processed += batch.processed;
+    total.enriched += batch.enriched;
+    total.missed += batch.missed;
+    total.deferred += batch.deferred;
+    total.remaining = batch.remaining;
+    total.done = batch.done;
+
+    if (batch.done || batch.processed === 0) break;
+    if (batch.deferred === batch.processed) break;
+    if (now() - began >= budgetMs) break;
+  }
+
+  return total;
+}

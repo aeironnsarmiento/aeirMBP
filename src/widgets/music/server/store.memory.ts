@@ -1,3 +1,4 @@
+import { ENRICHMENT_RETRY_AFTER_MS } from "./store";
 import type {
   ArtistPicture,
   JobName,
@@ -34,6 +35,14 @@ export type MemoryStore = MusicStore & {
   >;
   jobs: Map<JobName, JobState>;
 };
+
+type MemoryTrack = MemoryStore["tracks"] extends Map<string, infer T> ? T : never;
+
+function isPendingEnrichment(track: MemoryTrack): boolean {
+  if (track.durationMs !== null && track.artworkUrl !== null) return false;
+  if (track.attemptedAt === null) return true;
+  return Date.now() - track.attemptedAt.getTime() >= ENRICHMENT_RETRY_AFTER_MS;
+}
 
 function identity(row: { trackKey: string; playedAt: Date }): string {
   return `${row.trackKey}@${row.playedAt.getTime()}`;
@@ -94,11 +103,7 @@ export function createMemoryStore(): MemoryStore {
 
     async pendingEnrichment(limit): Promise<PendingTrack[]> {
       return [...tracks.values()]
-        .filter(
-          (track) =>
-            track.attemptedAt === null &&
-            (track.durationMs === null || track.artworkUrl === null),
-        )
+        .filter(isPendingEnrichment)
         .sort((a, b) => a.trackKey.localeCompare(b.trackKey))
         .slice(0, limit)
         .map((track) => ({
@@ -110,18 +115,14 @@ export function createMemoryStore(): MemoryStore {
     },
 
     async countPendingEnrichment() {
-      return [...tracks.values()].filter(
-        (track) =>
-          track.attemptedAt === null &&
-          (track.durationMs === null || track.artworkUrl === null),
-      ).length;
+      return [...tracks.values()].filter(isPendingEnrichment).length;
     },
 
     async recordEnrichment(trackKey: string, result: TrackEnrichment) {
       const track = tracks.get(trackKey);
       if (!track) return;
-      track.durationMs = result.durationMs;
-      track.artworkUrl = result.artworkUrl;
+      if (result.durationMs !== null) track.durationMs = result.durationMs;
+      if (result.artworkUrl !== null) track.artworkUrl = result.artworkUrl;
       track.source = result.source;
       track.enrichedAt = new Date();
       track.attemptedAt = new Date();
@@ -129,7 +130,7 @@ export function createMemoryStore(): MemoryStore {
 
     async recordEnrichmentMiss(trackKey: string) {
       const track = tracks.get(trackKey);
-      if (!track || track.enrichedAt) return;
+      if (!track) return;
       track.attemptedAt = new Date();
     },
 
