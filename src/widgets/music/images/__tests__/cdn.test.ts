@@ -53,11 +53,20 @@ describe("Last.fm", () => {
 
 describe("Cover Art Archive", () => {
   it("appends the size suffix", () => {
-    expect(sizedImageUrl(ARCHIVE, 44)).toBe(`${ARCHIVE}-250`);
+    expect(sizedImageUrl(ARCHIVE, 44)).toBe(`${ARCHIVE}-500`);
   });
 
   it("replaces a suffix that is already there rather than stacking one", () => {
-    expect(sizedImageUrl(`${ARCHIVE}-1200`, 44)).toBe(`${ARCHIVE}-250`);
+    expect(sizedImageUrl(`${ARCHIVE}-1200`, 44)).toBe(`${ARCHIVE}-500`);
+  });
+
+  // MusicBrainz HEAD-verifies front-500 and stores exactly that. Snapping to a
+  // smaller rung asks for a derivative nobody checked, and a 404 there is
+  // indistinguishable from an unenriched track: a silent initials tile.
+  it("leaves a stored front-500 untouched at every size the app renders", () => {
+    const stored = `${ARCHIVE}-500`;
+    expect(sizedImageUrl(stored, 28)).toBe(stored);
+    expect(sizedImageUrl(stored, 44)).toBe(stored);
   });
 });
 

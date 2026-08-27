@@ -1,11 +1,22 @@
-import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import type { MusicDb } from "@/widgets/music/queries/aggregations";
 import {
   musicArtist,
   musicJobState,
   musicScrobble,
   musicTrack,
 } from "@/lib/db/schema";
+
+export const ENRICHMENT_RETRY_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
+function enrichmentPending(now: Date) {
+  const cutoff = new Date(now.getTime() - ENRICHMENT_RETRY_AFTER_MS);
+  return and(
+    or(isNull(musicTrack.durationMs), isNull(musicTrack.artworkUrl)),
+    or(isNull(musicTrack.attemptedAt), lt(musicTrack.attemptedAt, cutoff)),
+  );
+}
 
 export type ScrobbleRow = {
   trackKey: string;
@@ -90,7 +101,7 @@ function artistNeedsPicture() {
   );
 }
 
-export function createDrizzleStore(db = getDb()): MusicStore {
+export function createDrizzleStore(db: MusicDb = getDb()): MusicStore {
   return {
     async insertScrobbles(rows) {
       if (rows.length === 0) return 0;
@@ -139,12 +150,7 @@ export function createDrizzleStore(db = getDb()): MusicStore {
           albumName: musicTrack.albumName,
         })
         .from(musicTrack)
-        .where(
-          and(
-            isNull(musicTrack.attemptedAt),
-            or(isNull(musicTrack.durationMs), isNull(musicTrack.artworkUrl)),
-          ),
-        )
+        .where(enrichmentPending(new Date()))
         .orderBy(musicTrack.trackKey)
         .limit(limit);
     },
@@ -153,24 +159,20 @@ export function createDrizzleStore(db = getDb()): MusicStore {
       const [row] = await db
         .select({ total: count() })
         .from(musicTrack)
-        .where(
-          and(
-            isNull(musicTrack.attemptedAt),
-            or(isNull(musicTrack.durationMs), isNull(musicTrack.artworkUrl)),
-          ),
-        );
+        .where(enrichmentPending(new Date()));
       return Number(row?.total ?? 0);
     },
 
     async recordEnrichment(trackKey, result) {
+      const now = new Date();
       await db
         .update(musicTrack)
         .set({
-          durationMs: result.durationMs,
-          artworkUrl: result.artworkUrl,
+          ...(result.durationMs === null ? {} : { durationMs: result.durationMs }),
+          ...(result.artworkUrl === null ? {} : { artworkUrl: result.artworkUrl }),
           source: result.source,
-          enrichedAt: new Date(),
-          attemptedAt: new Date(),
+          enrichedAt: now,
+          attemptedAt: now,
         })
         .where(eq(musicTrack.trackKey, trackKey));
     },
@@ -179,7 +181,7 @@ export function createDrizzleStore(db = getDb()): MusicStore {
       await db
         .update(musicTrack)
         .set({ attemptedAt: new Date() })
-        .where(and(eq(musicTrack.trackKey, trackKey), isNull(musicTrack.enrichedAt)));
+        .where(eq(musicTrack.trackKey, trackKey));
     },
 
     async pendingArtists(limit) {
