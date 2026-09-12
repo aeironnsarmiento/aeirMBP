@@ -31,4 +31,14 @@ export const PROJECTS: readonly Project[] = [
     stack: ["Next.js", "Vercel", "scraping"],
     palette: { accent: "#68784a", surface: "#f0f4e2" },
   },
+  {
+    id: "multiplayer-ai",
+    title: "multiplayer-ai",
+    description:
+      "A collaborative workspace where teams chat in shared rooms and work with the same persistent AI thread. Agent runs can plan, research in parallel, and stream their results back to everyone in the room.",
+    previewUrl: null,
+    href: "https://multiplayer-ai-bay.vercel.app",
+    stack: ["Next.js", "Supabase", "AI SDK"],
+    palette: { accent: "#f1f3f5", surface: "#292b30" },
+  },
 ];
