@@ -83,5 +83,6 @@ describe("committed data", () => {
 
     expect(screen.getAllByRole("link")).toHaveLength(PROJECTS.length);
     expect(screen.getByText("moonbites")).toBeInTheDocument();
+    expect(screen.getByText("multiplayer-ai")).toBeInTheDocument();
   });
 });
