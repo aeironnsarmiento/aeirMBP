@@ -1,11 +1,16 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { readNowPlaying } = vi.hoisted(() => ({ readNowPlaying: vi.fn() }));
+const { readNowPlaying, ingestPlays } = vi.hoisted(() => ({
+  readNowPlaying: vi.fn(),
+  ingestPlays: vi.fn(),
+}));
 
 vi.mock("@/widgets/music/server/now", () => ({ readNowPlaying }));
-vi.mock("@/widgets/music/server/ingest", () => ({ ingestPlays: vi.fn() }));
-vi.mock("@/widgets/music/server/store", () => ({ createDrizzleStore: vi.fn() }));
+vi.mock("@/widgets/music/server/ingest", () => ({ ingestPlays }));
+vi.mock("@/widgets/music/server/store", () => ({
+  createDrizzleStore: () => ({ writeJob: vi.fn() }),
+}));
 
 import { GET, POST } from "../route";
 
@@ -29,5 +34,25 @@ describe("now-playing HTTP semantics", () => {
     expect(readNowPlaying).toHaveBeenCalledWith({
       onFreshPlays: expect.any(Function),
     });
+  });
+});
+
+describe("catch-up reporting", () => {
+  it("returns how many plays the catch-up stored", async () => {
+    ingestPlays.mockResolvedValue({ considered: 50, inserted: 3 });
+    readNowPlaying.mockImplementation(async ({ onFreshPlays }) => {
+      await onFreshPlays([]);
+      return null;
+    });
+
+    const body = await (await POST()).json();
+
+    expect(body.inserted).toBe(3);
+  });
+
+  it("reports zero when this request did no catch-up", async () => {
+    const body = await (await POST()).json();
+
+    expect(body.inserted).toBe(0);
   });
 });

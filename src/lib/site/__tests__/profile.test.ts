@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -39,10 +39,18 @@ describe("committed values", () => {
     expect(PROFILE.links.length).toBeGreaterThan(0);
   });
 
-  it("only links off-site over http(s), which no validator checks anymore", () => {
+  it("only links over http(s), mailto, or a root-relative path, which no validator checks anymore", () => {
     for (const link of PROFILE.links) {
       expect(link.label).toBeTruthy();
-      expect(link.href).toMatch(/^https?:\/\//);
+      expect(link.href).toMatch(/^(https?:\/\/|mailto:|\/(?!\/))/);
+    }
+  });
+
+  it("points every root-relative link at a committed public file", () => {
+    const publicDirectory = resolve(sourceDirectory, "../../../public");
+
+    for (const link of PROFILE.links.filter((l) => /^\/(?!\/)/.test(l.href))) {
+      expect(existsSync(resolve(publicDirectory, `.${link.href}`))).toBe(true);
     }
   });
 });

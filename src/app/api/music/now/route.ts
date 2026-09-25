@@ -8,17 +8,26 @@ export async function GET() {
 }
 
 export async function POST() {
-  return nowPlayingResponse(await readNowPlaying({ onFreshPlays: catchUp }));
+  let inserted = 0;
+  const nowPlaying = await readNowPlaying({
+    onFreshPlays: async (plays) => {
+      inserted = await catchUp(plays);
+    },
+  });
+  return nowPlayingResponse(nowPlaying, { inserted });
 }
 
-function nowPlayingResponse(nowPlaying: Awaited<ReturnType<typeof readNowPlaying>>) {
+function nowPlayingResponse(
+  nowPlaying: Awaited<ReturnType<typeof readNowPlaying>>,
+  extra: { inserted?: number } = {},
+) {
   return Response.json(
-    { nowPlaying },
+    { nowPlaying, ...extra },
     { headers: { "cache-control": "no-store" } },
   );
 }
 
-async function catchUp(plays: readonly LastfmPlay[]): Promise<void> {
+async function catchUp(plays: readonly LastfmPlay[]): Promise<number> {
   const store = createDrizzleStore();
   const startedAt = new Date();
 
@@ -30,6 +39,7 @@ async function catchUp(plays: readonly LastfmPlay[]): Promise<void> {
       lastError: null,
       cursor: { considered: result.considered, inserted: result.inserted },
     });
+    return result.inserted;
   } catch (error) {
     const message = error instanceof Error ? error.message : "catchup-failed";
 

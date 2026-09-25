@@ -40,3 +40,17 @@ describe("public failure responses", () => {
     log.mockRestore();
   });
 });
+
+describe("cache policy", () => {
+  it("never caches recent plays, so every limit sees the same history", async () => {
+    recentlyPlayed.mockResolvedValue([]);
+    summary.mockResolvedValue({});
+
+    for (const limit of ["5", "60"]) {
+      const response = await handleMusicRead(
+        new Request(`https://example.test/api/music?view=recent&limit=${limit}`),
+      );
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+  });
+});

@@ -17,5 +17,7 @@ Here you can find what I have built; what I am exploring; and what I am listenin
   links: [
     { label: "linkedin", href: "https://www.linkedin.com/in/aeironn/" },
     { label: "github", href: "https://github.com/aeironnsarmiento" },
+    { label: "email", href: "mailto:aeironnsarmiento@gmail.com" },
+    { label: "resume", href: "/aeironn-sarmiento-resume.pdf" },
   ],
 };

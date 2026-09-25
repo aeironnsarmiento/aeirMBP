@@ -106,7 +106,6 @@ export function Summary({ data }: { data: MusicSummary }) {
     perDayAverage,
     listeningMinutes,
     uniqueArtists,
-    totalScrobbles,
   } = data;
 
   const [exact, setExact] = useState(false);
