@@ -60,8 +60,9 @@ export function AboutExpanded() {
                 interactive
                 className={styles.link}
                 href={link.href}
-                target="_blank"
-                rel="noopener noreferrer"
+                {...(opensInNewTab(link.href)
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
               >
                 {link.label}
                 <svg
@@ -84,4 +85,9 @@ export function AboutExpanded() {
       </div>
     </div>
   );
+}
+
+// A mailto hands off to the mail client; a new tab would only open blank.
+function opensInNewTab(href: string): boolean {
+  return !href.startsWith("mailto:");
 }
