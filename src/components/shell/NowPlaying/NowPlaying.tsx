@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { markMusicStale } from "@/widgets/music/freshness";
 import { sizedImageUrl } from "@/widgets/music/images/cdn";
 import { formatRelativeTime, hueFor, initialsFor } from "@/widgets/music/format";
 import type { NowPlaying as NowPlayingValue } from "@/widgets/music/server/now";
@@ -23,7 +24,9 @@ export function NowPlaying({ initial }: { initial: NowPlayingValue | null }) {
         });
         if (!response.ok) return;
         const body = await response.json();
-        if (!cancelled) setValue(body.nowPlaying as NowPlayingValue | null);
+        if (cancelled) return;
+        setValue(body.nowPlaying as NowPlayingValue | null);
+        if (body.inserted > 0) markMusicStale();
       } catch {
       }
     }

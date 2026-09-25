@@ -33,7 +33,13 @@ export async function handleMusicRead(request: Request): Promise<Response> {
 
   const range: TimeRange = isTimeRange(rangeParam) ? rangeParam : "week";
 
-  const headers = { "cache-control": "public, max-age=60, s-maxage=300" };
+  // Recent plays change with every song and have to agree between the compact
+  // card and the expanded view, which ask with different limits and so would
+  // hit different cache entries. The ranked views move slowly enough to cache.
+  const headers = {
+    "cache-control":
+      view === "recent" ? "no-store" : "public, max-age=60, s-maxage=300",
+  };
 
   try {
     const [payload, totals] = await Promise.all([

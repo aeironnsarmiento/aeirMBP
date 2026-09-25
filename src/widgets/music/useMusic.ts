@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useMusicVersion } from "./freshness";
 import type { MusicSummary } from "./queries/aggregations";
 import type { MusicPayload } from "./server/read";
 
@@ -25,6 +26,9 @@ export function useMusic({
   limit,
 }: MusicRequest): MusicState & { summary: MusicSummary | null } {
   const key = `${view}|${range ?? ""}|${limit ?? ""}`;
+  // Not part of `key`: a refresh swaps the data in place instead of dropping
+  // back to the skeleton.
+  const version = useMusicVersion();
   const [tracked, setTracked] = useState<Tracked>({ key, status: "loading" });
 
   const [summary, setSummary] = useState<MusicSummary | null>(null);
@@ -37,7 +41,10 @@ export function useMusic({
     if (range) params.set("range", range);
     if (limit) params.set("limit", String(limit));
 
-    fetch(`/api/music?${params}`, { signal: controller.signal })
+    fetch(`/api/music?${params}`, {
+      signal: controller.signal,
+      cache: "no-store",
+    })
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok) throw new Error(body?.error ?? `HTTP ${response.status}`);
@@ -55,7 +62,7 @@ export function useMusic({
       });
 
     return () => controller.abort();
-  }, [key, view, range, limit]);
+  }, [key, view, range, limit, version]);
 
   return { ...tracked, summary };
 }

@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NowPlaying as NowPlayingValue } from "@/widgets/music/server/now";
 import { NowPlaying } from "../NowPlaying/NowPlaying";
 
+const { markMusicStale } = vi.hoisted(() => ({ markMusicStale: vi.fn() }));
+vi.mock("@/widgets/music/freshness", () => ({ markMusicStale }));
+
 /**
  * The pulse's polling cadence.
  *
@@ -27,8 +30,11 @@ const INITIAL: NowPlayingValue = {
   source: "lastfm",
 };
 
-function response(value: NowPlayingValue | null) {
-  return { ok: true, json: async () => ({ nowPlaying: value }) } as Response;
+function response(value: NowPlayingValue | null, inserted = 0) {
+  return {
+    ok: true,
+    json: async () => ({ nowPlaying: value, inserted }),
+  } as Response;
 }
 
 /** Lets the poll's promise chain settle without advancing the clock. */
@@ -39,6 +45,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.useFakeTimers();
   fetchMock = vi.fn(async () => response(INITIAL));
+  markMusicStale.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -94,5 +101,22 @@ describe("polling", () => {
   it("renders nothing when there is no pulse to show", () => {
     const { container } = render(<NowPlaying initial={null} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("keeping the music widgets current", () => {
+  it("tells them to refetch when a poll stored new plays", async () => {
+    fetchMock.mockResolvedValue(response(INITIAL, 3));
+    render(<NowPlaying initial={INITIAL} />);
+    await settle();
+
+    expect(markMusicStale).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays quiet when the poll stored nothing", async () => {
+    render(<NowPlaying initial={INITIAL} />);
+    await settle();
+
+    expect(markMusicStale).not.toHaveBeenCalled();
   });
 });
