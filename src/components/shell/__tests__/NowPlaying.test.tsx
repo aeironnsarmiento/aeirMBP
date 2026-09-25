@@ -113,6 +113,17 @@ describe("keeping the music widgets current", () => {
     expect(markMusicStale).toHaveBeenCalledTimes(1);
   });
 
+  it("tells them to refetch when the pulse moved, even if another request stored the plays", async () => {
+    render(<NowPlaying initial={INITIAL} />);
+    await settle();
+    expect(markMusicStale).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValue(response({ ...INITIAL, track: "Reckoner" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+
+    expect(markMusicStale).toHaveBeenCalledTimes(1);
+  });
+
   it("stays quiet when the poll stored nothing", async () => {
     render(<NowPlaying initial={INITIAL} />);
     await settle();

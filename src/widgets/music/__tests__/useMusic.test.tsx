@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { markMusicStale } from "../freshness";
 import { useMusic } from "../useMusic";
 
-function Probe() {
-  const state = useMusic({ view: "recent", limit: 5 });
+function Probe({ view = "recent" }: { view?: string }) {
+  const state = useMusic({ view, limit: 5 });
   if (state.status !== "ready") return <p>loading</p>;
   const first = state.data.view === "recent" ? state.data.items[0] : null;
   return <p>{first?.trackName}</p>;
@@ -60,5 +60,31 @@ describe("staying current", () => {
     await settle();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(screen.getByText("Reckoner")).toBeInTheDocument();
+  });
+
+  it("keeps the current list when a background refresh fails", async () => {
+    render(<Probe />);
+    await settle();
+
+    fetchMock.mockRejectedValue(new Error("offline"));
+    act(() => markMusicStale());
+    await settle();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Weird Fishes")).toBeInTheDocument();
+  });
+
+  it("leaves the edge-cached ranked views alone", async () => {
+    render(<Probe view="artists" />);
+    await settle();
+
+    act(() => markMusicStale());
+    await settle();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/music?view=artists&limit=5",
+      expect.objectContaining({ cache: "default" }),
+    );
   });
 });

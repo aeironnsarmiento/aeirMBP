@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { markMusicStale } from "@/widgets/music/freshness";
 import { sizedImageUrl } from "@/widgets/music/images/cdn";
 import { formatRelativeTime, hueFor, initialsFor } from "@/widgets/music/format";
@@ -12,6 +12,7 @@ const ART_PX = 26;
 
 export function NowPlaying({ initial }: { initial: NowPlayingValue | null }) {
   const [value, setValue] = useState(initial);
+  const seen = useRef(signature(initial));
 
   useEffect(() => {
     let cancelled = false;
@@ -25,8 +26,14 @@ export function NowPlaying({ initial }: { initial: NowPlayingValue | null }) {
         if (!response.ok) return;
         const body = await response.json();
         if (cancelled) return;
-        setValue(body.nowPlaying as NowPlayingValue | null);
-        if (body.inserted > 0) markMusicStale();
+        const next = body.nowPlaying as NowPlayingValue | null;
+        setValue(next);
+
+        // `inserted` only reaches the request that did the write; a changed
+        // pulse is how every other open tab learns the history moved.
+        const changed = signature(next) !== seen.current;
+        seen.current = signature(next);
+        if (body.inserted > 0 || changed) markMusicStale();
       } catch {
       }
     }
@@ -83,4 +90,9 @@ export function NowPlaying({ initial }: { initial: NowPlayingValue | null }) {
       ) : null}
     </div>
   );
+}
+
+function signature(value: NowPlayingValue | null): string {
+  if (!value) return "";
+  return [value.track, value.artist, value.playedAt, value.live].join("\u001f");
 }
