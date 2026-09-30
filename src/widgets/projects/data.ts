@@ -36,9 +36,19 @@ export const PROJECTS: readonly Project[] = [
     title: "multiplayer-ai",
     description:
       "A collaborative workspace where teams chat in shared rooms and work with the same persistent AI thread. Agent runs can plan, research in parallel, and stream their results back to everyone in the room.",
-    previewUrl: null,
+    previewUrl: "/backgrounds/multiplayer-ai.png",
     href: "https://multiplayer-ai-bay.vercel.app",
     stack: ["Next.js", "Supabase", "AI SDK"],
     palette: { accent: "#f1f3f5", surface: "#292b30" },
+  },
+  {
+    id: "neetgrind",
+    title: "neetgrind",
+    description:
+      "A userscript that builds a Grind 75 study plan and lays it over NeetCode's roadmap graph. Today's questions, per-topic progress, and company-tagged problems, read straight from your NeetCode progress.",
+    previewUrl: "/backgrounds/neetgrind.png",
+    href: "https://github.com/aeironnsarmiento/neetgrind",
+    stack: ["JavaScript", "Tampermonkey", "esbuild"],
+    palette: { accent: "#8790ff", surface: "#1d1c1e" },
   },
 ];
